@@ -1,6 +1,21 @@
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+// Determine API base:
+// 1) Respect explicit VITE_API_BASE (for Vercel/production).
+// 2) If running on Vercel domain but env is missing, fall back to the Render backend.
+// 3) Otherwise use local proxy /api (for local dev).
+const inferDefaultBase = () => {
+  if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE;
+  if (typeof window !== 'undefined') {
+    const host = window.location.host || '';
+    if (host.includes('vercel.app')) {
+      return 'https://twse-warrant-volume-radar.onrender.com/api';
+    }
+  }
+  return '/api';
+};
+
+const API_BASE = inferDefaultBase();
 
 const api = axios.create({
   baseURL: API_BASE,
