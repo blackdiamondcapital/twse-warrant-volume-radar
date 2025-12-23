@@ -94,10 +94,10 @@ router.get('/dates', async (req, res) => {
 // POST /api/warrants/import-latest - fetch from TWSE and upsert into DB
 router.post('/import-latest', async (_req, res) => {
   if (importLatestInProgress) {
-    return res.status(200).json({
-      success: true,
-      message: '匯入作業進行中，請稍候再試或稍後刷新',
+    return res.status(409).json({
+      success: false,
       inProgress: true,
+      error: '匯入作業進行中，請稍候再試或稍後刷新',
     });
   }
 
