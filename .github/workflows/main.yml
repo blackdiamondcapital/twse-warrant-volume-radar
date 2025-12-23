@@ -32,85 +32,77 @@ jobs:
           # Warm up backend to avoid Render cold-start timeouts
           HEALTH_URL="$URL"
           HEALTH_URL="${HEALTH_URL%/api/warrants/import-latest}/api/health"
+          STATUS_URL="${HEALTH_URL%/api/health}/api/warrants/import-status"
           echo "Warm up: $HEALTH_URL"
           eval "curl -sS --max-time 20 $AUTH_ARGS $HEALTH_URL" || true
 
-          # If backend returns { inProgress: true }, wait and retry.
-          # Also retry on transient curl timeouts (Render cold start / network).
-          ATTEMPTS=6
-          for i in $(seq 1 $ATTEMPTS); do
-            echo "Attempt $i/$ATTEMPTS"
-            rm -f resp.json || true
-            # --max-time to avoid hanging forever
-            set +e
-            HTTP_CODE=$(eval "curl -X POST -sS --max-time 70 $AUTH_ARGS -o resp.json -w \"%{http_code}\" $URL")
-            CURL_EXIT=$?
-            set -e
+          echo "Status endpoint: $STATUS_URL"
 
-            if [ $CURL_EXIT -ne 0 ]; then
-              echo "curl failed with exit code $CURL_EXIT"
-              echo "### Import latest warrants" >> "$GITHUB_STEP_SUMMARY"
-              echo "- **Success**: false" >> "$GITHUB_STEP_SUMMARY"
-              echo "- **Message**: curl failed (exit $CURL_EXIT)" >> "$GITHUB_STEP_SUMMARY"
-              echo "- **Attempt**: $i/$ATTEMPTS" >> "$GITHUB_STEP_SUMMARY"
-              if [ $i -lt $ATTEMPTS ]; then
-                echo "Sleeping 20s then retry..."
-                sleep 20
-                continue
-              fi
-              exit 1
-            fi
+          # Trigger import (backend responds quickly with 202 and does work in background)
+          set +e
+          HTTP_CODE=$(eval "curl -X POST -sS --max-time 30 $AUTH_ARGS -o trigger.json -w \"%{http_code}\" $URL")
+          CURL_EXIT=$?
+          set -e
 
-            RESP=$(cat resp.json || true)
-            echo "$RESP"
-            echo "Status: $HTTP_CODE"
+          if [ $CURL_EXIT -ne 0 ]; then
+            {
+              echo "## Import latest warrants"
+              echo "- **Success**: false"
+              echo "- **Message**: trigger curl failed (exit $CURL_EXIT)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
-            # 409 + inProgress is an expected state: another import is running.
-            # Keep waiting/retrying without marking this run as "success".
-            if [ "$HTTP_CODE" = "409" ] && echo "$RESP" | grep -q '"inProgress"\s*:\s*true'; then
-              echo "Import in progress. Sleeping 15s then retry..."
-              sleep 15
+          TRIGGER_BODY=$(cat trigger.json || true)
+          echo "$TRIGGER_BODY"
+          echo "Trigger HTTP: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "202" ] && [ "$HTTP_CODE" != "409" ]; then
+            {
+              echo "## Import latest warrants"
+              echo "- **Success**: false"
+              echo "- **HTTP**: $HTTP_CODE"
+              echo "- **Body**: $TRIGGER_BODY"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          # Poll status until done (max ~10 minutes)
+          POLL_TIMES=40
+          for i in $(seq 1 $POLL_TIMES); do
+            sleep 15
+            STATUS_BODY=$(eval "curl -sS --max-time 20 $AUTH_ARGS $STATUS_URL")
+            IN_PROGRESS=$(echo "$STATUS_BODY" | jq -r '.inProgress // false' 2>/dev/null || echo "false")
+            STATE=$(echo "$STATUS_BODY" | jq -r '.status.state // ""' 2>/dev/null || echo "")
+            SUCCESS=$(echo "$STATUS_BODY" | jq -r '.status.success' 2>/dev/null || echo "null")
+            MSG=$(echo "$STATUS_BODY" | jq -r '(.status.message // .status.error // "")' 2>/dev/null || echo "")
+            IMPORTED=$(echo "$STATUS_BODY" | jq -r '(.status.importedCount // "")' 2>/dev/null || echo "")
+            TRADE_DATE=$(echo "$STATUS_BODY" | jq -r '(.status.tradeDate // "")' 2>/dev/null || echo "")
+            ELAPSED=$(echo "$STATUS_BODY" | jq -r '(.elapsedSeconds // "")' 2>/dev/null || echo "")
+
+            echo "Poll $i/$POLL_TIMES: inProgress=$IN_PROGRESS state=$STATE elapsed=${ELAPSED}s"
+
+            if [ "$IN_PROGRESS" = "true" ] || [ "$STATE" = "running" ]; then
               continue
             fi
-
-            if [ "$HTTP_CODE" != "200" ]; then
-              echo "Non-200 response from backend"
-              if [ $i -lt $ATTEMPTS ]; then
-                echo "Sleeping 15s then retry..."
-                sleep 15
-                continue
-              fi
-              {
-                echo "## Import latest warrants"
-                echo "- **Success**: false"
-                echo "- **HTTP**: $HTTP_CODE"
-                echo "- **Body**: $RESP"
-              } >> "$GITHUB_STEP_SUMMARY"
-              exit 1
-            fi
-
-            # Not in progress -> done (success or failure payload)
-            # Parse JSON with jq (available on ubuntu-latest)
-            SUCCESS=$(echo "$RESP" | jq -r '.success // false' 2>/dev/null || echo "false")
-            MESSAGE=$(echo "$RESP" | jq -r '(.message // .error // "")' 2>/dev/null || echo "")
-            IMPORTED=$(echo "$RESP" | jq -r '(.importedCount // "")' 2>/dev/null || echo "")
-            TRADE_DATE=$(echo "$RESP" | jq -r '(.tradeDate // "")' 2>/dev/null || echo "")
 
             {
               echo "## Import latest warrants"
               echo "- **Success**: $SUCCESS"
-              [ -n "$MESSAGE" ] && echo "- **Message**: $MESSAGE" || true
+              [ -n "$MSG" ] && echo "- **Message**: $MSG" || true
               [ -n "$IMPORTED" ] && echo "- **ImportedCount**: $IMPORTED" || true
               [ -n "$TRADE_DATE" ] && echo "- **TradeDate**: $TRADE_DATE" || true
             } >> "$GITHUB_STEP_SUMMARY"
 
-            if [ "$SUCCESS" != "true" ]; then
-              echo "Import failed: $MESSAGE"
-              exit 1
+            if [ "$SUCCESS" = "true" ]; then
+              exit 0
             fi
-            echo "Import success: $MESSAGE"
-            exit 0
+            exit 1
           done
 
-          echo "Still in progress after retries. Please check backend logs."
+          {
+            echo "## Import latest warrants"
+            echo "- **Success**: false"
+            echo "- **Message**: timeout waiting for import to finish"
+          } >> "$GITHUB_STEP_SUMMARY"
           exit 1
