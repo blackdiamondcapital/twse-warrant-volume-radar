@@ -65,25 +65,29 @@ jobs:
             echo "$RESP"
             echo "Status: $HTTP_CODE"
 
+            # 409 + inProgress is an expected state: another import is running.
+            # Keep waiting/retrying without marking this run as "success".
+            if [ "$HTTP_CODE" = "409" ] && echo "$RESP" | grep -q '"inProgress"\s*:\s*true'; then
+              echo "Import in progress. Sleeping 15s then retry..."
+              sleep 15
+              continue
+            fi
+
             if [ "$HTTP_CODE" != "200" ]; then
               echo "Non-200 response from backend"
-              echo "### Import latest warrants" >> "$GITHUB_STEP_SUMMARY"
-              echo "- **Success**: false" >> "$GITHUB_STEP_SUMMARY"
-              echo "- **HTTP**: $HTTP_CODE" >> "$GITHUB_STEP_SUMMARY"
-              echo "- **Body**: $RESP" >> "$GITHUB_STEP_SUMMARY"
               if [ $i -lt $ATTEMPTS ]; then
                 echo "Sleeping 15s then retry..."
                 sleep 15
                 continue
               fi
+              {
+                echo "## Import latest warrants"
+                echo "- **Success**: false"
+                echo "- **HTTP**: $HTTP_CODE"
+                echo "- **Body**: $RESP"
+              } >> "$GITHUB_STEP_SUMMARY"
               exit 1
             fi
-
-            echo "$RESP" | grep -q '"inProgress"\s*:\s*true' && {
-              echo "Import in progress. Sleeping 15s then retry..."
-              sleep 15
-              continue
-            }
 
             # Not in progress -> done (success or failure payload)
             # Parse JSON with jq (available on ubuntu-latest)
