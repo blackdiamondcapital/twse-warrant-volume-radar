@@ -5,6 +5,10 @@ on:
     - cron: '0 16 * * *'  # UTC 16:00 = 台灣每日 00:00
   workflow_dispatch:
 
+concurrency:
+  group: import-latest
+  cancel-in-progress: false
+
 jobs:
   import-latest:
     runs-on: ubuntu-latest
@@ -13,9 +17,87 @@ jobs:
         run: |
           set -e
           URL="${{ secrets.BACKEND_IMPORT_URL }}"
+          TOKEN="${{ secrets.BACKEND_IMPORT_TOKEN }}"
           if [ -z "$URL" ]; then
             echo "BACKEND_IMPORT_URL secret is required (e.g. https://twse-warrant-volume-radar.onrender.com/api/warrants/import-latest)"
             exit 1
           fi
           echo "POST $URL"
-          curl -X POST -sS -w "\nStatus: %{http_code}\n" "$URL"
+
+          AUTH_ARGS=""
+          if [ -n "$TOKEN" ]; then
+            AUTH_ARGS="-H \"Authorization: Bearer $TOKEN\""
+          fi
+
+          # If backend returns { inProgress: true }, wait and retry.
+          # This avoids "匯入作業進行中" when schedule/manual triggers overlap.
+          for i in 1 2 3 4 5; do
+            echo "Attempt $i"
+            # --max-time to avoid hanging forever
+            HTTP_CODE=$(eval "curl -X POST -sS --max-time 35 $AUTH_ARGS -o resp.json -w \"%{http_code}\" $URL")
+            RESP=$(cat resp.json || true)
+            echo "$RESP"
+            echo "Status: $HTTP_CODE"
+
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "Non-200 response from backend"
+              echo "### Import latest warrants" >> "$GITHUB_STEP_SUMMARY"
+              echo "- **Success**: false" >> "$GITHUB_STEP_SUMMARY"
+              echo "- **HTTP**: $HTTP_CODE" >> "$GITHUB_STEP_SUMMARY"
+              echo "- **Body**: $RESP" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+
+            echo "$RESP" | grep -q '"inProgress"\s*:\s*true' && {
+              echo "Import in progress. Sleeping 15s then retry..."
+              sleep 15
+              continue
+            }
+
+            # Not in progress -> done (success or failure payload)
+            RESP_JSON="$RESP" python3 - <<'PY'
+            import json
+            import os
+            import sys
+
+            resp = os.environ.get('RESP_JSON', '')
+            try:
+              data = json.loads(resp)
+            except Exception:
+              summary_path = os.environ.get('GITHUB_STEP_SUMMARY')
+              if summary_path:
+                with open(summary_path, 'a', encoding='utf-8') as f:
+                  f.write('## Import latest warrants\n')
+                  f.write('- **Success**: false\n')
+                  f.write('- **Message**: Invalid JSON response\n')
+              print('Invalid JSON response')
+              print(resp)
+              sys.exit(1)
+
+            success = bool(data.get('success'))
+            msg = data.get('message') or data.get('error') or ''
+            imported = data.get('importedCount')
+            trade_date = data.get('tradeDate')
+
+            summary_path = os.environ.get('GITHUB_STEP_SUMMARY')
+            if summary_path:
+              with open(summary_path, 'a', encoding='utf-8') as f:
+                f.write('## Import latest warrants\n')
+                f.write(f"- **Success**: {success}\n")
+                if msg:
+                  f.write(f"- **Message**: {msg}\n")
+                if imported is not None:
+                  f.write(f"- **ImportedCount**: {imported}\n")
+                if trade_date:
+                  f.write(f"- **TradeDate**: {trade_date}\n")
+
+            if not success:
+              print('Import failed:', msg)
+              sys.exit(1)
+            print('Import success:', msg)
+            PY
+            exit 0
+          done
+
+          echo "Still in progress after retries. Please check backend logs."
+          exit 1
