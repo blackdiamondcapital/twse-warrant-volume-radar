@@ -44,6 +44,12 @@ export async function fetchTimeseries({ code, start, end, limitDays = 90 }) {
   return resp.data;
 }
 
+export async function fetchImportStatus() {
+  const resp = await api.get('/warrants/import-status');
+  if (!resp.data?.success) throw new Error(resp.data?.error || '讀取匯入狀態失敗');
+  return resp.data;
+}
+
 export async function importLatestWarrants() {
   try {
     const resp = await api.post('/warrants/import-latest');
