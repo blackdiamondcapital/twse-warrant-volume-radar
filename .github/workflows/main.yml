@@ -55,47 +55,25 @@ jobs:
             }
 
             # Not in progress -> done (success or failure payload)
-            RESP_JSON="$RESP" python3 - <<'PY'
-            import json
-            import os
-            import sys
+            # Parse JSON with jq (available on ubuntu-latest)
+            SUCCESS=$(echo "$RESP" | jq -r '.success // false' 2>/dev/null || echo "false")
+            MESSAGE=$(echo "$RESP" | jq -r '(.message // .error // "")' 2>/dev/null || echo "")
+            IMPORTED=$(echo "$RESP" | jq -r '(.importedCount // "")' 2>/dev/null || echo "")
+            TRADE_DATE=$(echo "$RESP" | jq -r '(.tradeDate // "")' 2>/dev/null || echo "")
 
-            resp = os.environ.get('RESP_JSON', '')
-            try:
-              data = json.loads(resp)
-            except Exception:
-              summary_path = os.environ.get('GITHUB_STEP_SUMMARY')
-              if summary_path:
-                with open(summary_path, 'a', encoding='utf-8') as f:
-                  f.write('## Import latest warrants\n')
-                  f.write('- **Success**: false\n')
-                  f.write('- **Message**: Invalid JSON response\n')
-              print('Invalid JSON response')
-              print(resp)
-              sys.exit(1)
+            {
+              echo "## Import latest warrants"
+              echo "- **Success**: $SUCCESS"
+              [ -n "$MESSAGE" ] && echo "- **Message**: $MESSAGE" || true
+              [ -n "$IMPORTED" ] && echo "- **ImportedCount**: $IMPORTED" || true
+              [ -n "$TRADE_DATE" ] && echo "- **TradeDate**: $TRADE_DATE" || true
+            } >> "$GITHUB_STEP_SUMMARY"
 
-            success = bool(data.get('success'))
-            msg = data.get('message') or data.get('error') or ''
-            imported = data.get('importedCount')
-            trade_date = data.get('tradeDate')
-
-            summary_path = os.environ.get('GITHUB_STEP_SUMMARY')
-            if summary_path:
-              with open(summary_path, 'a', encoding='utf-8') as f:
-                f.write('## Import latest warrants\n')
-                f.write(f"- **Success**: {success}\n")
-                if msg:
-                  f.write(f"- **Message**: {msg}\n")
-                if imported is not None:
-                  f.write(f"- **ImportedCount**: {imported}\n")
-                if trade_date:
-                  f.write(f"- **TradeDate**: {trade_date}\n")
-
-            if not success:
-              print('Import failed:', msg)
-              sys.exit(1)
-            print('Import success:', msg)
-            PY
+            if [ "$SUCCESS" != "true" ]; then
+              echo "Import failed: $MESSAGE"
+              exit 1
+            fi
+            echo "Import success: $MESSAGE"
             exit 0
           done
 
