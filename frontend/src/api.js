@@ -45,7 +45,16 @@ export async function fetchTimeseries({ code, start, end, limitDays = 90 }) {
 }
 
 export async function importLatestWarrants() {
-  const resp = await api.post('/warrants/import-latest');
-  if (!resp.data?.success) throw new Error(resp.data?.error || '匯入最新權證資料失敗');
-  return resp.data;
+  try {
+    const resp = await api.post('/warrants/import-latest');
+    if (!resp.data?.success) throw new Error(resp.data?.error || '匯入最新權證資料失敗');
+    return resp.data;
+  } catch (err) {
+    const status = err?.response?.status;
+    const data = err?.response?.data;
+    if (status === 409 && data?.inProgress) {
+      return data;
+    }
+    throw err;
+  }
 }
