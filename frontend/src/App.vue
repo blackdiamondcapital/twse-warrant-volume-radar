@@ -15,6 +15,7 @@ const timeseries = ref([]);
 const loadingSeries = ref(false);
 const statusText = ref('');
 const importing = ref(false);
+const importProgress = ref('');
 
 async function loadDates() {
   try {
@@ -81,7 +82,9 @@ async function onImportLatest() {
   try {
     importing.value = true;
     statusText.value = '正在從 TWSE 抓取最新權證資料並匯入，請稍候...';
+    importProgress.value = '連線資料源中';
     const resp = await importLatestWarrants();
+    importProgress.value = '寫入資料庫中';
     const msg = resp.message || '匯入完成';
     const tdate = resp.tradeDate || '';
     statusText.value = `${msg}${tdate ? `（交易日期：${tdate}）` : ''}`;
@@ -90,8 +93,10 @@ async function onImportLatest() {
   } catch (err) {
     console.error('onImportLatest error', err);
     statusText.value = `匯入失敗：${err.message}`;
+    importProgress.value = '';
   } finally {
     importing.value = false;
+    importProgress.value = '';
   }
 }
 
@@ -141,7 +146,12 @@ onMounted(async () => {
 
     <main class="app-main">
       <div class="status-bar">
-        <span>{{ statusText }}</span>
+        <div class="status-line">
+          <span>{{ statusText }}</span>
+          <span v-if="importing && importProgress" class="import-progress">
+            {{ importProgress }} · 若逾時請稍晚再試
+          </span>
+        </div>
       </div>
       <div class="layout">
         <section class="layout-left">
