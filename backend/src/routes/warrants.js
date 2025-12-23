@@ -9,9 +9,12 @@ const TWSE_API_URL = 'https://openapi.twse.com.tw/v1/opendata/t187ap42_L';
 let importLatestInProgress = false;
 let importLatestStartedAtMs = null;
 const IMPORT_LATEST_LOCK_TTL_MS = 5 * 60 * 1000;
+const IMPORT_MAX_RUNTIME_MS = 6 * 60 * 1000;
+const UPSERT_CHUNK_SIZE = 250;
 
 const importLatestStatus = {
   state: 'idle',
+  phase: null,
   startedAt: null,
   finishedAt: null,
   success: null,
@@ -19,6 +22,8 @@ const importLatestStatus = {
   error: null,
   importedCount: null,
   tradeDate: null,
+  total: null,
+  processed: null,
 };
 
 function parseRocDateToIso(dateText) {
@@ -37,11 +42,68 @@ function setImportLatestStatus(patch) {
   Object.assign(importLatestStatus, patch);
 }
 
+function buildBulkUpsert({ table, rows }) {
+  if (!rows.length) return null;
+
+  const cols = [
+    'out_date',
+    'trade_date',
+    'warrant_code',
+    'warrant_name',
+    'turnover',
+    'volume',
+    'raw_out_date_text',
+    'raw_trade_date_text',
+  ];
+
+  const values = [];
+  const valueGroups = rows.map((r, idx) => {
+    const base = idx * cols.length;
+    values.push(
+      r.out_date,
+      r.trade_date,
+      r.warrant_code,
+      r.warrant_name,
+      r.turnover,
+      r.volume,
+      r.raw_out_date_text,
+      r.raw_trade_date_text,
+    );
+
+    const placeholders = cols
+      .map((_, i) => `$${base + i + 1}`)
+      .join(',');
+    return `(${placeholders},NOW())`;
+  });
+
+  const text = `
+    INSERT INTO ${table} (
+      ${cols.join(',')},
+      updated_at
+    )
+    VALUES
+      ${valueGroups.join(',\n      ')}
+    ON CONFLICT (warrant_code, trade_date) DO UPDATE
+    SET
+      out_date = EXCLUDED.out_date,
+      warrant_name = EXCLUDED.warrant_name,
+      turnover = EXCLUDED.turnover,
+      volume = EXCLUDED.volume,
+      raw_out_date_text = EXCLUDED.raw_out_date_text,
+      raw_trade_date_text = EXCLUDED.raw_trade_date_text,
+      updated_at = NOW()
+  `;
+
+  return { text, values };
+}
+
 async function runImportLatest() {
   importLatestInProgress = true;
   importLatestStartedAtMs = Date.now();
+  const deadlineMs = importLatestStartedAtMs + IMPORT_MAX_RUNTIME_MS;
   setImportLatestStatus({
     state: 'running',
+    phase: 'fetching',
     startedAt: new Date(importLatestStartedAtMs).toISOString(),
     finishedAt: null,
     success: null,
@@ -49,10 +111,13 @@ async function runImportLatest() {
     error: null,
     importedCount: null,
     tradeDate: null,
+    total: null,
+    processed: null,
   });
 
   let client;
   try {
+    console.log('[import] start');
     let rawList;
     try {
       rawList = await fetchJsonWithTimeout(TWSE_API_URL, { timeoutMs: 12_000, retries: 1 });
@@ -91,34 +156,7 @@ async function runImportLatest() {
     const tradeDateText = first['交易日期'] || first['出表日期'];
     const isoTradeDate = parseRocDateToIso(tradeDateText);
 
-    client = await pool.connect();
-    await client.query('BEGIN');
-
-    const sql = `
-      INSERT INTO ${TABLE} (
-        out_date,
-        trade_date,
-        warrant_code,
-        warrant_name,
-        turnover,
-        volume,
-        raw_out_date_text,
-        raw_trade_date_text,
-        updated_at
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
-      ON CONFLICT (warrant_code, trade_date) DO UPDATE
-      SET
-        out_date = EXCLUDED.out_date,
-        warrant_name = EXCLUDED.warrant_name,
-        turnover = EXCLUDED.turnover,
-        volume = EXCLUDED.volume,
-        raw_out_date_text = EXCLUDED.raw_out_date_text,
-        raw_trade_date_text = EXCLUDED.raw_trade_date_text,
-        updated_at = NOW()
-    `;
-
-    let affected = 0;
+    const rows = [];
     for (const item of rawList) {
       const outDateText = item['出表日期'];
       const tradeText = item['交易日期'];
@@ -128,31 +166,76 @@ async function runImportLatest() {
       const name = String(item['權證名稱'] || '').trim();
       if (!code || !tradeIso) continue;
 
-      const turnover = toNumber(item['成交金額']);
-      const volume = toNumber(item['成交張數']);
-
-      await client.query(sql, [
-        outDateIso || tradeIso,
-        tradeIso,
-        code,
-        name || null,
-        turnover,
-        volume,
-        outDateText || null,
-        tradeText || null,
-      ]);
-      affected += 1;
+      rows.push({
+        out_date: outDateIso || tradeIso,
+        trade_date: tradeIso,
+        warrant_code: code,
+        warrant_name: name || null,
+        turnover: toNumber(item['成交金額']),
+        volume: toNumber(item['成交張數']),
+        raw_out_date_text: outDateText || null,
+        raw_trade_date_text: tradeText || null,
+      });
     }
+
+    if (!rows.length) {
+      setImportLatestStatus({
+        state: 'idle',
+        phase: null,
+        finishedAt: new Date().toISOString(),
+        success: true,
+        message: 'TWSE 資料格式正常，但可匯入筆數為 0（可能缺少代號/日期）',
+        importedCount: 0,
+        tradeDate: isoTradeDate,
+        total: 0,
+        processed: 0,
+      });
+      return;
+    }
+
+    client = await pool.connect();
+    await client.query('BEGIN');
+    await client.query('SET LOCAL statement_timeout = 120000');
+
+    setImportLatestStatus({
+      phase: 'db_upserting',
+      total: rows.length,
+      processed: 0,
+    });
+
+    let affected = 0;
+    for (let i = 0; i < rows.length; i += UPSERT_CHUNK_SIZE) {
+      if (Date.now() > deadlineMs) {
+        throw new Error('匯入超過時間上限，已中止以避免卡住');
+      }
+
+      const chunk = rows.slice(i, i + UPSERT_CHUNK_SIZE);
+      const stmt = buildBulkUpsert({ table: TABLE, rows: chunk });
+      if (!stmt) continue;
+      await client.query(stmt.text, stmt.values);
+      affected += chunk.length;
+
+      setImportLatestStatus({
+        processed: affected,
+      });
+    }
+
+    setImportLatestStatus({
+      phase: 'committing',
+    });
 
     await client.query('COMMIT');
 
     setImportLatestStatus({
       state: 'idle',
+      phase: null,
       finishedAt: new Date().toISOString(),
       success: true,
       message: '權證資料匯入完成',
       importedCount: affected,
       tradeDate: isoTradeDate,
+      total: rows.length,
+      processed: affected,
     });
   } catch (err) {
     if (client) {
@@ -161,6 +244,7 @@ async function runImportLatest() {
     console.error('runImportLatest error', err);
     setImportLatestStatus({
       state: 'idle',
+      phase: null,
       finishedAt: new Date().toISOString(),
       success: false,
       error: err?.message || '匯入失敗',
@@ -265,8 +349,6 @@ router.post('/import-latest', async (_req, res) => {
       });
     }
   }
-
-  // Fire-and-forget background import to avoid request timeouts.
   runImportLatest();
 
   return res.status(202).json({
