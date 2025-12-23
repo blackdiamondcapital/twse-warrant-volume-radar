@@ -135,6 +135,22 @@ body {
   color: var(--text-muted);
 }
 
+.status-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.import-progress {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  font-size: 0.76rem;
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.6fr);
