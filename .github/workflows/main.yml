@@ -29,12 +29,38 @@ jobs:
             AUTH_ARGS="-H \"Authorization: Bearer $TOKEN\""
           fi
 
+          # Warm up backend to avoid Render cold-start timeouts
+          HEALTH_URL="$URL"
+          HEALTH_URL="${HEALTH_URL%/api/warrants/import-latest}/api/health"
+          echo "Warm up: $HEALTH_URL"
+          eval "curl -sS --max-time 20 $AUTH_ARGS $HEALTH_URL" || true
+
           # If backend returns { inProgress: true }, wait and retry.
-          # This avoids "匯入作業進行中" when schedule/manual triggers overlap.
-          for i in 1 2 3 4 5; do
-            echo "Attempt $i"
+          # Also retry on transient curl timeouts (Render cold start / network).
+          ATTEMPTS=6
+          for i in $(seq 1 $ATTEMPTS); do
+            echo "Attempt $i/$ATTEMPTS"
+            rm -f resp.json || true
             # --max-time to avoid hanging forever
-            HTTP_CODE=$(eval "curl -X POST -sS --max-time 35 $AUTH_ARGS -o resp.json -w \"%{http_code}\" $URL")
+            set +e
+            HTTP_CODE=$(eval "curl -X POST -sS --max-time 70 $AUTH_ARGS -o resp.json -w \"%{http_code}\" $URL")
+            CURL_EXIT=$?
+            set -e
+
+            if [ $CURL_EXIT -ne 0 ]; then
+              echo "curl failed with exit code $CURL_EXIT"
+              echo "### Import latest warrants" >> "$GITHUB_STEP_SUMMARY"
+              echo "- **Success**: false" >> "$GITHUB_STEP_SUMMARY"
+              echo "- **Message**: curl failed (exit $CURL_EXIT)" >> "$GITHUB_STEP_SUMMARY"
+              echo "- **Attempt**: $i/$ATTEMPTS" >> "$GITHUB_STEP_SUMMARY"
+              if [ $i -lt $ATTEMPTS ]; then
+                echo "Sleeping 20s then retry..."
+                sleep 20
+                continue
+              fi
+              exit 1
+            fi
+
             RESP=$(cat resp.json || true)
             echo "$RESP"
             echo "Status: $HTTP_CODE"
@@ -45,6 +71,11 @@ jobs:
               echo "- **Success**: false" >> "$GITHUB_STEP_SUMMARY"
               echo "- **HTTP**: $HTTP_CODE" >> "$GITHUB_STEP_SUMMARY"
               echo "- **Body**: $RESP" >> "$GITHUB_STEP_SUMMARY"
+              if [ $i -lt $ATTEMPTS ]; then
+                echo "Sleeping 15s then retry..."
+                sleep 15
+                continue
+              fi
               exit 1
             fi
 
