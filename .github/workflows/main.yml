@@ -1,0 +1,21 @@
+name: Import latest warrants daily
+
+on:
+  schedule:
+    - cron: '0 16 * * *'  # UTC 16:00 = 台灣每日 00:00
+  workflow_dispatch:
+
+jobs:
+  import-latest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call backend import endpoint
+        run: |
+          set -e
+          URL="${{ secrets.BACKEND_IMPORT_URL }}"
+          if [ -z "$URL" ]; then
+            echo "BACKEND_IMPORT_URL secret is required (e.g. https://twse-warrant-volume-radar.onrender.com/api/warrants/import-latest)"
+            exit 1
+          fi
+          echo "POST $URL"
+          curl -X POST -sS -w "\nStatus: %{http_code}\n" "$URL"
