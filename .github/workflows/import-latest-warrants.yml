@@ -1,0 +1,57 @@
+name: Import latest warrants daily
+
+on:
+  schedule:
+    - cron: '0 16 * * *'  # UTC 16:00 = 台灣每日 00:00
+  workflow_dispatch:
+
+concurrency:
+  group: import-latest
+  cancel-in-progress: false
+
+jobs:
+  import-latest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call TWSEDataCenter import endpoint
+        run: |
+          set -e
+          URL="${{ secrets.BACKEND_IMPORT_URL }}"
+          TOKEN="${{ secrets.BACKEND_IMPORT_TOKEN }}"
+          if [ -z "$URL" ]; then
+            URL="https://twse-data-center.vercel.app/api/warrants/import-latest"
+          fi
+          echo "POST $URL"
+
+          AUTH_ARGS=""
+          if [ -n "$TOKEN" ]; then
+            AUTH_ARGS="-H \"Authorization: Bearer $TOKEN\""
+          fi
+
+          set +e
+          HTTP_CODE=$(eval "curl -X POST -sS --max-time 120 $AUTH_ARGS -o trigger.json -w \"%{http_code}\" $URL")
+          CURL_EXIT=$?
+          set -e
+
+          if [ $CURL_EXIT -ne 0 ]; then
+            {
+              echo "## Import latest warrants"
+              echo "- **Success**: false"
+              echo "- **Message**: trigger curl failed (exit $CURL_EXIT)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          TRIGGER_BODY=$(cat trigger.json || true)
+          echo "$TRIGGER_BODY"
+          echo "Trigger HTTP: $HTTP_CODE"
+
+          {
+            echo "## Import latest warrants"
+            echo "- **HTTP**: $HTTP_CODE"
+            echo "- **Body**: $TRIGGER_BODY"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "202" ] && [ "$HTTP_CODE" != "409" ]; then
+            exit 1
+          fi
