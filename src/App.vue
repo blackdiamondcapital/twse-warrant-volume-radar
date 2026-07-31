@@ -15,6 +15,7 @@ import RankingPanel from './components/RankingPanel.vue'
 import StockChartECharts from './components/StockChartECharts.vue'
 import WarrantDetail from './components/WarrantDetail.vue'
 import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
+import { exportMasterToExcel } from './utils/exportMasterExcel.js'
 
 const {
   isAuthenticated,
@@ -75,6 +76,8 @@ const filters = reactive({
 const masterRows = ref([])
 const masterTotal = ref(0)
 const loadingMaster = ref(false)
+const masterScreenerOpen = ref(false)
+const exportingMaster = ref(false)
 
 const dates = ref([])
 const selectedDate = ref('')
@@ -89,6 +92,8 @@ const detail = ref(null)
 const loadingDetail = ref(false)
 const techChartRef = ref(null)
 const chartFullscreen = ref(false)
+const detailAnchor = ref(null)
+const masterDetailAnchor = ref(null)
 
 async function loadStats() {
   try {
@@ -171,6 +176,15 @@ function setHeatType(next) {
   loadRankings()
 }
 
+function setHeatMarket(next) {
+  heatMarket.value = next
+}
+
+function setHeatDate(next) {
+  selectedDate.value = next
+  loadRankings()
+}
+
 function setMetric(next) {
   metric.value = next
   loadRankings()
@@ -189,7 +203,7 @@ async function loadRankings() {
         metric: metric.value,
         market: heatMarket.value,
         type: expectedKind === 'all' ? '' : expectedKind,
-        limit: 80,
+        limit: 100,
       })
 
     let data = await requestOnce(selectedDate.value || undefined)
@@ -199,19 +213,8 @@ async function loadRankings() {
     }
     if (reqId !== rankingsReqId) return
 
-    // 顯示層防線：若回傳混入錯類型，依類型／名稱再過濾
-    let rows = data.rows || []
-    if (expectedType === '認購') {
-      rows = rows.filter(
-        (r) => r.warrant_type === '認購' || String(r.warrant_name || '').includes('購'),
-      )
-    } else if (expectedType === '認售') {
-      rows = rows.filter(
-        (r) => r.warrant_type === '認售' || String(r.warrant_name || '').includes('售'),
-      )
-    }
-
-    rankings.value = rows.map((r, i) => ({ ...r, rank: i + 1 }))
+    const rows = (data.rows || []).map((r, i) => ({ ...r, rank: r.rank ?? i + 1 }))
+    rankings.value = rows
     rankingsMeta.value = { kind: data.kind || expectedKind, type: data.type || expectedType }
     if (data.date) selectedDate.value = data.date
     if (!rows.length) {
@@ -270,15 +273,22 @@ async function selectWarrant(row) {
       }
     }
     await nextTick()
-    // 技術分析需登入；指標權限比照主站 Pro／Lite
-    if (!requireLoginForChart()) return
-    techChartRef.value?.enterFullscreen?.()
+    const scrollTarget = masterScreenerOpen.value
+      ? masterDetailAnchor.value
+      : detailAnchor.value
+    scrollTarget?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
   } catch (err) {
     console.error(err)
     statusText.value = `載入詳情失敗：${err.message}`
   } finally {
     loadingDetail.value = false
   }
+}
+
+async function analyzeWarrant(row) {
+  if (!masterScreenerOpen.value) masterScreenerOpen.value = true
+  await selectWarrant(row)
+  openTechChartOrLogin()
 }
 
 function onChartFullscreenChange(active) {
@@ -290,13 +300,56 @@ function openTechChart() {
   techChartRef.value?.enterFullscreen?.()
 }
 
+function openTechChartOrLogin() {
+  if (!requireLoginForChart()) return
+  nextTick(() => {
+    techChartRef.value?.enterFullscreen?.()
+  })
+}
+
 function closeDetail() {
   detail.value = null
+  selected.value = null
 }
 
 function onSearch() {
   filters.page = 1
+  masterScreenerOpen.value = true
   loadMaster()
+}
+
+async function selectMasterWarrant(row) {
+  masterScreenerOpen.value = true
+  await selectWarrant(row)
+}
+
+function setMasterType(type) {
+  filters.type = type
+  onSearch()
+}
+
+async function onExportMaster() {
+  exportingMaster.value = true
+  statusText.value = '正在準備 Excel…'
+  try {
+    const count = await exportMasterToExcel(filters, numOrUndef, {
+      onProgress: ({ loaded, total }) => {
+        statusText.value = `匯出中… ${loaded.toLocaleString()} / ${total.toLocaleString()} 檔`
+      },
+    })
+    statusText.value = `已下載 Excel（${count.toLocaleString()} 檔）`
+  } catch (err) {
+    console.error(err)
+    statusText.value = `Excel 匯出失敗：${err.message}`
+  } finally {
+    exportingMaster.value = false
+  }
+}
+
+function toggleMasterScreener() {
+  const opening = !masterScreenerOpen.value
+  masterScreenerOpen.value = opening
+  if (opening) loadMaster()
 }
 
 function clearFundamentalFilters() {
@@ -315,11 +368,6 @@ function clearFundamentalFilters() {
 function onPage(p) {
   filters.page = p
   loadMaster()
-}
-
-function onMasterSort({ sort, sortDir }) {
-  filters.sort = sort
-  filters.sortDir = sortDir
 }
 
 async function onImportLatest() {
@@ -347,10 +395,6 @@ watch(heatMarket, async () => {
   await loadDates()
   await loadRankings()
 })
-watch(() => [filters.sort, filters.sortDir], () => {
-  filters.page = 1
-  loadMaster()
-})
 
 onMounted(async () => {
   const oauth = consumeOAuthCallbackFromUrl()
@@ -364,7 +408,7 @@ onMounted(async () => {
     await fetchCurrentUser()
   }
 
-  await Promise.all([loadStats(), loadMaster(), loadDates()])
+  await Promise.all([loadStats(), loadDates()])
   await loadRankings()
 })
 </script>
@@ -407,24 +451,15 @@ onMounted(async () => {
           </div>
         </div>
         <p class="lede">篩選全市場發行主檔，追蹤當日成交熱度，並以全螢幕技術分析檢視單檔走勢。</p>
-      </div>
-      <div class="hero-stats" v-if="stats">
-        <div class="stat">
-          <span class="label">主檔總數</span>
-          <strong>{{ stats.total_master?.toLocaleString?.() }}</strong>
-        </div>
-        <div class="stat">
-          <span class="label">上市</span>
-          <strong>{{ stats.twse?.master_total?.toLocaleString?.() }}</strong>
-        </div>
-        <div class="stat">
-          <span class="label">上櫃</span>
-          <strong>{{ stats.tpex?.master_total?.toLocaleString?.() }}</strong>
-        </div>
-        <div class="stat">
-          <span class="label">最新成交日</span>
-          <strong>{{ latestTradeDate }}</strong>
-        </div>
+        <p v-if="stats" class="hero-stats">
+          <span class="stat"><span class="label">主檔總數</span><strong>{{ stats.total_master?.toLocaleString?.() }}</strong></span>
+          <span class="stat-sep" aria-hidden="true">·</span>
+          <span class="stat"><span class="label">上市</span><strong>{{ stats.twse?.master_total?.toLocaleString?.() }}</strong></span>
+          <span class="stat-sep" aria-hidden="true">·</span>
+          <span class="stat"><span class="label">上櫃</span><strong>{{ stats.tpex?.master_total?.toLocaleString?.() }}</strong></span>
+          <span class="stat-sep" aria-hidden="true">·</span>
+          <span class="stat"><span class="label">最新成交日</span><strong>{{ latestTradeDate }}</strong></span>
+        </p>
       </div>
     </header>
 
@@ -436,86 +471,43 @@ onMounted(async () => {
           placeholder="例如：2330、台積電、03002T、群益"
           @keyup.enter="onSearch"
         />
-      </div>
-      <div class="filters">
-        <div>
-          <label>市場</label>
-          <select v-model="filters.market">
-            <option value="both">全市場</option>
-            <option value="twse">上市 TWSE</option>
-            <option value="tpex">上櫃 TPEX</option>
-          </select>
-        </div>
-        <div>
-          <label>類型</label>
-          <select v-model="filters.type">
-            <option value="">全部</option>
-            <option value="認購">認購</option>
-            <option value="認售">認售</option>
-          </select>
-        </div>
-        <div>
-          <label>排序</label>
-          <select v-model="filters.sort">
-            <option value="expiry">到期日</option>
-            <option value="days">到期天數</option>
-            <option value="exercise">履約價</option>
-            <option value="ratio">行使比</option>
-            <option value="close">收盤</option>
-            <option value="volume">成交量</option>
-            <option value="code">代號</option>
-            <option value="name">名稱</option>
-            <option value="market">市場</option>
-            <option value="type">類型</option>
-            <option value="underlying">標的</option>
-          </select>
-        </div>
-        <div>
-          <label>升降冪</label>
-          <select v-model="filters.sortDir">
-            <option value="asc">升冪 ↑</option>
-            <option value="desc">降冪 ↓</option>
-          </select>
+        <div class="type-toggle">
+          <div class="btns">
+            <button type="button" :class="{ active: filters.type === '' }" @click="setMasterType('')">全部</button>
+            <button type="button" :class="{ active: filters.type === '認購' }" @click="setMasterType('認購')">認購</button>
+            <button type="button" :class="{ active: filters.type === '認售' }" @click="setMasterType('認售')">認售</button>
+          </div>
         </div>
       </div>
 
       <div class="fund-block">
         <div class="fund-head">
-          <h3>基本面條件</h3>
-          <span class="muted">依收盤、履約價、到期天數、到期日區間篩選</span>
+          <h3>基本面</h3>
         </div>
         <div class="fund-grid">
           <div class="range-field">
             <label>收盤</label>
-            <div class="range-inputs">
-              <input v-model="filters.closeMin" type="number" step="any" min="0" placeholder="最低" />
-              <span>–</span>
-              <input v-model="filters.closeMax" type="number" step="any" min="0" placeholder="最高" />
-            </div>
+            <input v-model="filters.closeMin" type="number" step="any" min="0" placeholder="低" />
+            <span class="sep">–</span>
+            <input v-model="filters.closeMax" type="number" step="any" min="0" placeholder="高" />
           </div>
           <div class="range-field">
             <label>履約價</label>
-            <div class="range-inputs">
-              <input v-model="filters.exerciseMin" type="number" step="any" min="0" placeholder="最低" />
-              <span>–</span>
-              <input v-model="filters.exerciseMax" type="number" step="any" min="0" placeholder="最高" />
-            </div>
+            <input v-model="filters.exerciseMin" type="number" step="any" min="0" placeholder="低" />
+            <span class="sep">–</span>
+            <input v-model="filters.exerciseMax" type="number" step="any" min="0" placeholder="高" />
           </div>
           <div class="range-field">
-            <label>到期天數</label>
-            <div class="range-inputs">
-              <input v-model="filters.daysMin" type="number" step="1" min="0" placeholder="最低" />
-              <span>–</span>
-              <input v-model="filters.daysMax" type="number" step="1" min="0" placeholder="最高" />
-            </div>
+            <label>天數</label>
+            <input v-model="filters.daysMin" type="number" step="1" min="0" placeholder="低" />
+            <span class="sep">–</span>
+            <input v-model="filters.daysMax" type="number" step="1" min="0" placeholder="高" />
           </div>
-          <div class="range-field">
+          <div class="range-field range-field--date">
             <label>到期日</label>
-            <div class="range-inputs">
-              <input v-model="filters.expiryFrom" type="date" />
-              <span>–</span>
-              <input v-model="filters.expiryTo" type="date" />
-            </div>
+            <input v-model="filters.expiryFrom" type="date" />
+            <span class="sep">–</span>
+            <input v-model="filters.expiryTo" type="date" />
           </div>
         </div>
       </div>
@@ -533,6 +525,105 @@ onMounted(async () => {
       </div>
     </section>
 
+    <section class="heat-section">
+      <div class="heat-toolbar panel">
+        <h2 class="heat-title">當日熱度</h2>
+        <div class="heat-rows">
+          <div class="heat-row">
+            <span class="heat-row-label">日期</span>
+            <div class="chip-scroll">
+              <button
+                v-for="d in dates"
+                :key="d"
+                type="button"
+                class="chip-btn"
+                :class="{ active: selectedDate === d }"
+                @click="setHeatDate(d)"
+              >{{ d }}</button>
+            </div>
+          </div>
+          <div class="heat-row heat-row--controls">
+            <span class="heat-row-label">市場</span>
+            <div class="chip-btns">
+              <button type="button" class="chip-btn" :class="{ active: heatMarket === 'both' }" @click="setHeatMarket('both')">全市場</button>
+              <button type="button" class="chip-btn" :class="{ active: heatMarket === 'twse' }" @click="setHeatMarket('twse')">上市</button>
+              <button type="button" class="chip-btn" :class="{ active: heatMarket === 'tpex' }" @click="setHeatMarket('tpex')">上櫃</button>
+            </div>
+            <span class="heat-row-label">類型</span>
+            <div class="chip-btns">
+              <button type="button" class="chip-btn" :class="{ active: heatType === '' }" @click="setHeatType('')">全部</button>
+              <button type="button" class="chip-btn" :class="{ active: heatType === '認購' }" @click="setHeatType('認購')">認購</button>
+              <button type="button" class="chip-btn" :class="{ active: heatType === '認售' }" @click="setHeatType('認售')">認售</button>
+            </div>
+            <span class="heat-row-label">指標</span>
+            <div class="chip-btns">
+              <button type="button" class="chip-btn" :class="{ active: metric === 'turnover' }" @click="setMetric('turnover')">成交金額</button>
+              <button type="button" class="chip-btn" :class="{ active: metric === 'volume' }" @click="setMetric('volume')">成交張數</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <RankingPanel
+        :rows="rankings"
+        :loading="loadingRankings"
+        :selected-code="selected?.warrant_code || ''"
+        :metric="metric"
+        :heat-type="heatType"
+        :api-type="rankingsMeta.type"
+        :error-text="rankingsError"
+        :trade-date="selectedDate"
+        @select="selectWarrant"
+        @analyze="analyzeWarrant"
+      />
+
+      <p v-if="!selected && !loadingDetail && rankings.length" class="heat-hint muted">
+        點選上方排行中的權證，下方會出現詳情與「技術分析」按鈕
+      </p>
+
+      <div
+        v-if="selected"
+        ref="detailAnchor"
+        class="heat-action-bar"
+      >
+        <div class="heat-action-copy">
+          <span class="mono">{{ selected.warrant_code }}</span>
+          <span>{{ selected.warrant_name }}</span>
+        </div>
+        <button
+          type="button"
+          class="primary ta-btn"
+          :disabled="loadingDetail"
+          @click="openTechChartOrLogin"
+        >
+          {{ loadingDetail ? '載入中…' : '技術分析' }}
+        </button>
+      </div>
+
+      <WarrantDetail
+        v-if="(detail || loadingDetail) && !masterScreenerOpen"
+        flat
+        :detail="detail"
+        :loading="loadingDetail"
+        @close="closeDetail"
+        @open-chart="openTechChartOrLogin"
+      />
+
+      <div class="chart-host" aria-hidden="true">
+        <StockChartECharts
+          v-if="isAuthenticated"
+          ref="techChartRef"
+          class="warrant-stock-chart"
+          :symbol="selected?.warrant_code || ''"
+          :stock-name="selected?.warrant_name || ''"
+          :warrant-info="detail"
+          period="1D"
+          :fullscreen-search-enabled="false"
+          @fullscreen-change="onChartFullscreenChange"
+        />
+      </div>
+    </section>
+
     <p class="status muted">{{ statusText }}</p>
 
     <div class="workspace">
@@ -540,92 +631,29 @@ onMounted(async () => {
         <MasterScreener
           :rows="masterRows"
           :total="masterTotal"
+          :stats-total="stats?.total_master || 0"
           :page="filters.page"
           :page-size="filters.pageSize"
           :loading="loadingMaster"
+          :exporting="exportingMaster"
           :selected-code="selected?.warrant_code || ''"
-          :sort="filters.sort"
-          :sort-dir="filters.sortDir"
-          @select="selectWarrant"
+          :open="masterScreenerOpen"
+          @select="selectMasterWarrant"
+          @analyze="analyzeWarrant"
           @page="onPage"
-          @sort="onMasterSort"
+          @toggle="toggleMasterScreener"
+          @export="onExportMaster"
         />
 
-        <WarrantDetail
-          v-if="!chartFullscreen && (detail || loadingDetail)"
-          :detail="detail"
-          :loading="loadingDetail"
-          @close="closeDetail"
-          @open-chart="openTechChart"
-        />
-
-        <div class="heat-controls panel">
-          <div>
-            <label>熱度日期</label>
-            <select v-model="selectedDate" @change="loadRankings">
-              <option v-for="d in dates" :key="d" :value="d">{{ d }}</option>
-            </select>
-          </div>
-          <div>
-            <label>熱度市場</label>
-            <select v-model="heatMarket">
-              <option value="both">全市場</option>
-              <option value="twse">上市</option>
-              <option value="tpex">上櫃</option>
-            </select>
-          </div>
-          <div class="metric-toggle">
-            <label>類型</label>
-            <div class="btns">
-              <button type="button" :class="{ active: heatType === '' }" @click="setHeatType('')">全部</button>
-              <button type="button" :class="{ active: heatType === '認購' }" @click="setHeatType('認購')">認購</button>
-              <button type="button" :class="{ active: heatType === '認售' }" @click="setHeatType('認售')">認售</button>
-            </div>
-          </div>
-          <div class="metric-toggle">
-            <label>指標</label>
-            <div class="btns">
-              <button type="button" :class="{ active: metric === 'turnover' }" @click="setMetric('turnover')">成交金額</button>
-              <button type="button" :class="{ active: metric === 'volume' }" @click="setMetric('volume')">成交張數</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="heat-grid">
-          <RankingPanel
-            :rows="rankings"
-            :loading="loadingRankings"
-            :selected-code="selected?.warrant_code || ''"
-            :metric="metric"
-            :heat-type="heatType"
-            :api-type="rankingsMeta.type"
-            :error-text="rankingsError"
-            @select="selectWarrant"
+        <div ref="masterDetailAnchor">
+          <WarrantDetail
+            v-if="masterScreenerOpen && (detail || loadingDetail)"
+            flat
+            :detail="detail"
+            :loading="loadingDetail"
+            @close="closeDetail"
+            @open-chart="openTechChartOrLogin"
           />
-          <div class="chart-gate">
-            <StockChartECharts
-              v-if="isAuthenticated"
-              ref="techChartRef"
-              class="warrant-stock-chart"
-              :symbol="selected?.warrant_code || ''"
-              :stock-name="selected?.warrant_name || ''"
-              :warrant-info="detail"
-              period="1D"
-              :fullscreen-search-enabled="false"
-              @fullscreen-change="onChartFullscreenChange"
-            />
-            <div v-else class="chart-login panel">
-              <h3>技術分析需登入</h3>
-              <p class="muted">登入後可查看權證 K 線與技術指標；神奇 K／階梯線／進階指標權限比照 QuantGems 主站方案。</p>
-              <button type="button" class="primary" @click="handleGoogleLogin">Google 登入</button>
-              <a
-                class="pricing-link"
-                href="https://www.quantgems.com/?view=pricing"
-                target="_blank"
-                rel="noopener noreferrer"
-              >查看方案</a>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -749,30 +777,35 @@ onMounted(async () => {
   font-size: 0.98rem;
 }
 .hero-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
+  margin: 0.65rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 .stat {
-  background: rgba(7, 11, 20, 0.72);
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  padding: 0.85rem 1rem;
-  box-shadow: var(--shadow);
-  transition: border-color 0.2s, transform 0.15s;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
 }
-.stat:hover {
-  border-color: rgba(0, 212, 255, 0.45);
-  transform: translateY(-1px);
+.stat-sep {
+  color: rgba(148, 163, 184, 0.45);
+  user-select: none;
 }
 .stat .label {
-  display: block;
   color: var(--text-dim);
   font-size: 0.78rem;
-  margin-bottom: 0.25rem;
+}
+.stat .label::after {
+  content: '\00a0';
 }
 .stat strong {
-  font-size: 1.25rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -784,12 +817,137 @@ onMounted(async () => {
   animation: rise 1s ease both;
 }
 .search-main label,
-.filters label,
-.heat-controls label {
+.filters label {
   display: block;
   margin-bottom: 0.35rem;
   color: var(--text-dim);
   font-size: 0.8rem;
+}
+.heat-section {
+  display: grid;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+  animation: rise 0.85s ease both;
+}
+.heat-toolbar {
+  padding: 0.85rem 1rem 0.95rem;
+}
+.heat-title {
+  margin: 0 0 0.65rem;
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+.heat-rows {
+  display: grid;
+  gap: 0.55rem;
+}
+.heat-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.heat-row--controls {
+  flex-wrap: wrap;
+  row-gap: 0.45rem;
+}
+.heat-row-label {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  min-width: 2rem;
+}
+.chip-scroll {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding-bottom: 0.1rem;
+  min-width: 0;
+  flex: 1;
+  scrollbar-width: thin;
+}
+.chip-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+.chip-btns {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.chip-btn {
+  border: 1px solid var(--line);
+  background: rgba(7, 11, 20, 0.55);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 0.24rem 0.62rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.chip-btn:hover {
+  border-color: rgba(0, 212, 255, 0.35);
+  color: var(--text);
+}
+.chip-btn.active {
+  color: var(--cyan-bright);
+  border-color: rgba(0, 212, 255, 0.45);
+  background: rgba(0, 212, 255, 0.1);
+}
+.heat-hint {
+  margin: 0;
+  padding: 0.35rem 0.15rem 0;
+  font-size: 0.82rem;
+  text-align: center;
+}
+.heat-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid rgba(0, 212, 255, 0.28);
+  border-radius: 12px;
+  background: rgba(0, 212, 255, 0.06);
+}
+.heat-action-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.55rem;
+  min-width: 0;
+  font-size: 0.88rem;
+}
+.heat-action-copy .mono {
+  font-weight: 700;
+  color: var(--cyan-bright);
+}
+.ta-btn {
+  flex-shrink: 0;
+  min-width: 7rem;
+}
+.type-toggle {
+  margin-top: 0.55rem;
+}
+.type-toggle .btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.type-toggle .btns button {
+  border: 1px solid var(--line);
+  background: rgba(7, 11, 20, 0.55);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 0.28rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.type-toggle .btns button.active {
+  color: var(--cyan-bright);
+  border-color: rgba(0, 212, 255, 0.45);
+  background: rgba(0, 212, 255, 0.1);
 }
 .filters {
   display: grid;
@@ -798,46 +956,56 @@ onMounted(async () => {
 }
 .fund-block {
   border-top: 1px solid rgba(148, 183, 205, 0.14);
-  padding-top: 0.85rem;
-  display: grid;
-  gap: 0.65rem;
-}
-.fund-head {
+  padding-top: 0.55rem;
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.55rem 0.85rem;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
 }
 .fund-head h3 {
   margin: 0;
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   font-weight: 650;
   color: #e8f4ff;
+  white-space: nowrap;
 }
 .fund-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.65rem;
+  flex: 1;
+  min-width: 0;
+}
+.range-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  flex: 0 0 auto;
 }
 .range-field label {
-  display: block;
-  margin-bottom: 0.35rem;
+  margin: 0;
   color: var(--text-dim);
-  font-size: 0.8rem;
+  font-size: 0.74rem;
+  white-space: nowrap;
 }
-.range-inputs {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 0.35rem;
-  align-items: center;
-}
-.range-inputs span {
+.range-field .sep {
   color: #8fa3b3;
-  font-size: 0.8rem;
-  text-align: center;
+  font-size: 0.72rem;
+  line-height: 1;
+  user-select: none;
 }
-.range-inputs input {
+.range-field input {
+  width: 3.6rem;
   min-width: 0;
+  padding: 0.2rem 0.32rem;
+  font-size: 0.76rem;
+  border-radius: 5px;
+}
+.range-field--date input {
+  width: 7.4rem;
+  padding: 0.18rem 0.28rem;
+  font-size: 0.72rem;
 }
 .actions {
   display: flex;
@@ -860,61 +1028,23 @@ onMounted(async () => {
   display: grid;
   gap: 1rem;
 }
-.heat-controls {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1.2fr 1.2fr;
-  gap: 0.85rem;
-  padding: 0.9rem 1.05rem;
-}
-.metric-toggle .btns {
-  display: flex;
-  gap: 0.45rem;
-}
 .heat-grid {
   display: grid;
-  grid-template-columns: 0.9fr 1.1fr;
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.65rem;
   align-items: stretch;
 }
-.chart-gate {
-  min-height: 520px;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
+.chart-host {
+  position: fixed;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 .warrant-stock-chart {
-  min-height: 520px;
-  width: 100%;
-  flex: 1;
-}
-.chart-login {
-  flex: 1;
-  min-height: 520px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 0.65rem;
-  padding: 1.4rem 1.35rem;
-}
-.chart-login h3 {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 650;
-}
-.chart-login p {
-  margin: 0;
-  max-width: 34rem;
-  line-height: 1.55;
-  font-size: 0.88rem;
-}
-.chart-login .pricing-link {
-  color: #7dd3fc;
-  font-size: 0.84rem;
-  text-decoration: none;
-}
-.chart-login .pricing-link:hover {
-  text-decoration: underline;
+  width: 1px;
+  height: 1px;
 }
 :global(body.warrant-ta-fs),
 :global(html.warrant-ta-fs) {
@@ -927,21 +1057,12 @@ onMounted(async () => {
 }
 
 @media (max-width: 980px) {
-  .hero-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .workspace,
-  .heat-grid,
-  .filters,
-  .fund-grid,
-  .heat-controls {
+  .filters {
     grid-template-columns: 1fr;
   }
-}
-
-@media (max-width: 1100px) and (min-width: 721px) {
-  .fund-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .heat-row--controls {
+    gap: 0.35rem 0.55rem;
   }
 }
 </style>

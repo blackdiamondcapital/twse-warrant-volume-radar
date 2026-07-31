@@ -1,11 +1,14 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { warrantTypeLabel, isPutWarrant } from '../utils/warrantDisplay.js'
 
 const props = defineProps({
   detail: { type: Object, default: null },
   loading: { type: Boolean, default: false },
   /** 技術分析全螢幕時改為浮在底部 */
   overlay: { type: Boolean, default: false },
+  /** 嵌入熱度區：無外框 */
+  flat: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['close', 'open-chart'])
@@ -31,17 +34,6 @@ const daysToExpiry = computed(() => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return Math.round((t - today.getTime()) / 86400000)
-})
-
-const isCall = computed(() => {
-  const t = String(props.detail?.warrant_type || '')
-  return t.includes('認購') || t.toLowerCase() === 'call'
-})
-
-const headline = computed(() => {
-  const d = props.detail
-  if (!d) return ''
-  return [d.warrant_code, d.warrant_name].filter(Boolean).join(' · ')
 })
 
 const metrics = computed(() => {
@@ -83,22 +75,23 @@ function fmt(v) {
   <aside
     v-if="detail || loading"
     class="sheet"
-    :class="{ overlay, expanded }"
+    :class="{ overlay, expanded, flat }"
   >
     <div class="sheet-bar">
       <div class="id-block">
         <div class="id-top">
-          <span v-if="detail?.market" class="pill market">{{ detail.market }}</span>
-          <span
-            v-if="detail?.warrant_type"
-            class="pill type"
-            :class="isCall ? 'call' : 'put'"
-          >{{ detail.warrant_type }}</span>
-          <strong class="title">{{ loading ? '載入詳情…' : headline }}</strong>
+          <div v-if="detail && !loading" class="code-block">
+            <span class="mono code">{{ detail.warrant_code }}</span>
+          </div>
+          <strong class="title">{{ loading ? '載入詳情…' : (detail?.warrant_name || '') }}</strong>
         </div>
         <p v-if="detail && !loading" class="sub">
-          標的
           <span class="mono">{{ detail.underlying_code }}</span>
+          <span
+            v-if="warrantTypeLabel(detail)"
+            class="pill type"
+            :class="isPutWarrant(detail) ? 'put' : 'call'"
+          >{{ warrantTypeLabel(detail) }}</span>
           {{ detail.underlying_name || '' }}
         </p>
       </div>
@@ -175,6 +168,17 @@ function fmt(v) {
   z-index: 10050;
   border-color: rgba(0, 212, 255, 0.28);
 }
+.sheet.flat {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.sheet.flat .sheet-bar {
+  padding: 0.55rem 0 0.65rem;
+  border-top: 1px solid rgba(148, 183, 205, 0.12);
+}
 .sheet-bar {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.8fr) auto;
@@ -189,7 +193,19 @@ function fmt(v) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem 0.45rem;
+  gap: 0.35rem 0.55rem;
+}
+.code-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+.code-block .code {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #e8f1f7;
 }
 .title {
   font-size: 0.95rem;
@@ -203,11 +219,12 @@ function fmt(v) {
 }
 .sub {
   margin: 0.25rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
   font-size: 0.78rem;
   color: #8fa3b3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .pill {
   display: inline-flex;
@@ -218,11 +235,6 @@ function fmt(v) {
   font-weight: 600;
   border: 1px solid transparent;
   flex-shrink: 0;
-}
-.pill.market {
-  color: #7dd3fc;
-  background: rgba(56, 189, 248, 0.12);
-  border-color: rgba(56, 189, 248, 0.28);
 }
 .pill.type.call {
   color: #fda4af;
@@ -279,6 +291,12 @@ button.ghost {
 button.ghost:hover {
   border-color: rgba(0, 212, 255, 0.45);
   color: #e8f7ff;
+}
+.sheet.flat .actions button.accent {
+  border-color: rgba(0, 212, 255, 0.55);
+  color: #00d4ff;
+  background: rgba(0, 212, 255, 0.12);
+  font-weight: 650;
 }
 button.ghost.accent {
   border-color: rgba(0, 212, 255, 0.45);

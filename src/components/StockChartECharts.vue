@@ -103,6 +103,9 @@ const warrantFsTitle = computed(() => {
   return [d.warrant_code, d.warrant_name].filter(Boolean).join(' · ')
 })
 
+/** 權證雷達（盤後）：固定日線，隱藏週期切換與 K 線模式 */
+const isWarrantRadar = computed(() => !!props.warrantInfo)
+
 const warrantInfoOpen = ref(false)
 
 const { user } = useAuth()
@@ -1054,7 +1057,7 @@ function describeChartLoadError(error) {
 function retryChartLoad() {
   clearChartError()
   const symbol = String(props.symbol || '').trim().toUpperCase()
-  const option = periodKeyMap.get(selectedPeriodKey.value)
+  const option = periodKeyMap.value.get(selectedPeriodKey.value)
   const periodValue = option?.period ?? DEFAULT_PERIOD
   chartDataCache.delete(`${symbol}|${periodValue}`)
   loadChartData()
@@ -6053,20 +6056,28 @@ watch([showKLine, showDLine, kdMidline, kdBold], () => {
 })
 
 const DEFAULT_PERIOD = '1D'
-const periodOptions = [
-  { key: 'day', period: '1D', label: '日K' },
-  { key: 'week', period: '1W', label: '週K' },
-  { key: 'month', period: '1M', label: '月K' }
+const ALL_PERIOD_OPTIONS = [
+  { key: 'day', period: '1D', label: '日線' },
+  { key: 'week', period: '1W', label: '周線' },
+  { key: 'month', period: '1M', label: '月線' },
 ]
 
-const periodKeyMap = new Map(periodOptions.map(option => [option.key, option]))
-const periodValueMap = new Map(periodOptions.map(option => [option.period, option]))
+const periodOptions = computed(() => {
+  if (isWarrantRadar.value) {
+    return ALL_PERIOD_OPTIONS.filter((option) => option.key === 'day')
+  }
+  return ALL_PERIOD_OPTIONS
+})
+
+const periodKeyMap = computed(() => new Map(periodOptions.value.map((option) => [option.key, option])))
+const periodValueMap = computed(() => new Map(periodOptions.value.map((option) => [option.period, option])))
 
 function resolveInitialKey(initialPeriod) {
-  if (periodValueMap.has(initialPeriod)) {
-    return periodValueMap.get(initialPeriod).key
+  const pvm = periodValueMap.value
+  if (pvm.has(initialPeriod)) {
+    return pvm.get(initialPeriod).key
   }
-  return periodOptions.find(option => option.period === DEFAULT_PERIOD)?.key ?? 'day'
+  return periodOptions.value.find((option) => option.period === DEFAULT_PERIOD)?.key ?? 'day'
 }
 
 const selectedPeriodKey = ref(resolveInitialKey(props.period))
@@ -6248,7 +6259,7 @@ async function loadChartData() {
   resetRenderRetryState()
   clearChartError()
   loading.value = true
-  const option = periodKeyMap.get(selectedPeriodKey.value)
+  const option = periodKeyMap.value.get(selectedPeriodKey.value)
   const periodValue = option?.period ?? DEFAULT_PERIOD
   const cacheKey = `${symbol.toUpperCase()}|${periodValue}`
   try {
@@ -6297,7 +6308,7 @@ async function maybeLoadOlder({ startValue, endValue } = {}) {
   try {
     if (olderLoading.value || loading.value) return
     if (!props.symbol) return
-    const option = periodKeyMap.get(selectedPeriodKey.value)
+    const option = periodKeyMap.value.get(selectedPeriodKey.value)
     const periodValue = option?.period ?? DEFAULT_PERIOD
 
     const len = chartData.value.length
@@ -11640,13 +11651,20 @@ function renderChart() {
 }
 
 function changePeriod(key) {
-  if (!periodKeyMap.has(key)) return
-  const option = periodKeyMap.get(key)
+  if (!periodKeyMap.value.has(key)) return
+  const option = periodKeyMap.value.get(key)
   const periodValue = option?.period ?? DEFAULT_PERIOD
   selectedPeriodKey.value = key
   emit('update:period', periodValue)
   // selectedPeriodKey watcher 統一載入，避免同一操作請求／重繪兩次。
 }
+
+watch(isWarrantRadar, (warrant) => {
+  if (!warrant) return
+  if (selectedPeriodKey.value !== 'day') {
+    changePeriod('day')
+  }
+}, { immediate: true })
 
 // Watch for data changes and render chart
 watch(() => [chartData.value.length, loading.value], async ([newLen, isLoading]) => {
@@ -11979,7 +11997,7 @@ onUnmounted(() => {
             />
             <button class="stepper-btn" type="button" @click="incrementKCount" title="增加根數">＋</button>
           </div>
-          <div class="period-chips-scroll">
+          <div v-if="!isWarrantRadar" class="period-chips-scroll">
             <button
               v-for="option in periodOptions"
               :key="option.key"
@@ -11996,7 +12014,7 @@ onUnmounted(() => {
         <div class="mobile-toolbar-secondary">
         <div class="kline-search-cluster">
         <!-- K線模式：桌機三按鈕（原始／神奇／轉折）；手機／窄螢幕（isMobileUi）圖示下拉 -->
-        <div class="kline-mode-toggle">
+        <div v-if="!isWarrantRadar" class="kline-mode-toggle">
           <template v-if="!isMobileUi">
             <button
               type="button"
@@ -12464,7 +12482,12 @@ onUnmounted(() => {
             <span class="fs-mt-title" :title="stockTitle || '—'">
               {{ stockTitle || '—' }}
             </span>
-            <div class="fs-mt-periods" role="tablist" aria-label="K 線週期">
+            <div
+              v-if="!isWarrantRadar"
+              class="fs-mt-periods"
+              role="tablist"
+              aria-label="K 線週期"
+            >
               <button
                 v-for="option in periodOptions"
                 :key="`mtp-${option.key}`"

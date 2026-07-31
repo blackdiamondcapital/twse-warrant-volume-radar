@@ -165,8 +165,47 @@ table.data tbody tr {
   cursor: pointer;
   transition: background 0.15s;
 }
+table.data td.num { text-align: right; }
+table.data th.action-col,
+table.data td.action-col {
+  width: 1%;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+  text-align: center;
+  white-space: nowrap;
+}
+.row-info-btn {
+  border: 1px solid rgba(148, 183, 205, 0.28);
+  background: rgba(7, 11, 20, 0.55);
+  color: var(--text-dim, #94a3b8);
+  border-radius: 6px;
+  padding: 0.16rem 0.42rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.row-info-btn:hover {
+  border-color: rgba(148, 183, 205, 0.45);
+  color: var(--text, #e2e8f0);
+}
+.row-ta-btn {
+  border: 1px solid rgba(0, 212, 255, 0.35);
+  background: rgba(0, 212, 255, 0.08);
+  color: var(--cyan-bright, #38bdf8);
+  border-radius: 6px;
+  padding: 0.16rem 0.42rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1.3;
+}
+.row-ta-btn:hover {
+  border-color: rgba(0, 212, 255, 0.55);
+  background: rgba(0, 212, 255, 0.14);
+}
 table.data tbody tr:hover,
 table.data tbody tr.selected {
   background: rgba(0, 212, 255, 0.08);
 }
-table.data td.num { text-align: right; }
