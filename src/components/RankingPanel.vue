@@ -13,7 +13,7 @@ const props = defineProps({
   tradeDate: { type: String, default: '' },
 })
 
-const emit = defineEmits(['select', 'analyze'])
+const emit = defineEmits(['select'])
 
 const subtitle = computed(() => {
   const parts = []
@@ -51,7 +51,6 @@ function fmt(n, digits = 0) {
             <th>收盤</th>
             <th class="num">張數</th>
             <th class="num">金額</th>
-            <th class="action-col"></th>
           </tr>
         </thead>
         <tbody>
@@ -78,14 +77,6 @@ function fmt(n, digits = 0) {
             <td class="num mono">{{ fmt(row.close_price, 2) }}</td>
             <td class="num mono" :class="{ 'metric-em': metric === 'volume' }">{{ fmt(row.volume) }}</td>
             <td class="num mono" :class="{ 'metric-em': metric === 'turnover' }">{{ fmt(row.turnover) }}</td>
-            <td class="action-col">
-              <button
-                type="button"
-                class="row-ta-btn"
-                title="技術分析"
-                @click.stop="emit('analyze', row)"
-              >分析</button>
-            </td>
           </tr>
         </tbody>
       </table>

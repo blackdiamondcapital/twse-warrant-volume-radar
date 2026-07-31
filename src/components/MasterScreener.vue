@@ -12,9 +12,11 @@ const props = defineProps({
   exporting: { type: Boolean, default: false },
   selectedCode: { type: String, default: '' },
   open: { type: Boolean, default: false },
+  /** 搜尋結果頁：固定展開、不可收合 */
+  resultsMode: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['select', 'page', 'toggle', 'export', 'analyze'])
+const emit = defineEmits(['select', 'page', 'toggle', 'export'])
 
 const displayTotal = computed(() => {
   if (props.total > 0) return props.total
@@ -23,10 +25,13 @@ const displayTotal = computed(() => {
 
 const countLabel = computed(() => {
   if (props.loading) return '載入中…'
+  if (props.resultsMode && props.total === 0 && !props.loading) return '沒有符合條件'
   if (props.total > 0) return `符合 ${displayTotal.value.toLocaleString()} 檔`
-  if (props.statsTotal > 0) return `未到期 ${props.statsTotal.toLocaleString()} 檔`
+  if (props.statsTotal > 0 && !props.resultsMode) return `未到期 ${props.statsTotal.toLocaleString()} 檔`
   return '—'
 })
+
+const panelOpen = computed(() => props.resultsMode || props.open)
 
 const columns = [
   { key: 'code', label: '代號' },
@@ -38,7 +43,6 @@ const columns = [
   { key: 'days', label: '到期天數', align: 'num' },
   { key: 'ratio', label: '行使比', align: 'num' },
   { key: 'expiry', label: '到期日' },
-  { key: 'action', label: '' },
 ]
 
 const pageCount = computed(() => Math.max(1, Math.ceil((props.total || 0) / props.pageSize)))
@@ -57,26 +61,32 @@ function daysClass(days) {
 </script>
 
 <template>
-  <div class="screener panel">
+  <div class="screener panel" :class="{ 'screener--results': resultsMode }">
     <div class="head-row">
-      <button type="button" class="head toggle" @click="emit('toggle')">
+      <button v-if="!resultsMode" type="button" class="head toggle" @click="emit('toggle')">
         <div class="head-main">
           <h2>發行主檔</h2>
           <span class="muted">{{ countLabel }}</span>
         </div>
-        <span class="chev" aria-hidden="true">{{ open ? '▾' : '▸' }}</span>
+        <span class="chev" aria-hidden="true">{{ panelOpen ? '▾' : '▸' }}</span>
       </button>
+      <div v-else class="head head-static">
+        <div class="head-main">
+          <h2>搜尋結果</h2>
+          <span class="muted">{{ countLabel }}</span>
+        </div>
+      </div>
       <button
         type="button"
         class="export-btn"
-        :disabled="exporting || loading"
+        :disabled="exporting || loading || !total"
         @click.stop="emit('export')"
       >
         {{ exporting ? '匯出中…' : '下載 Excel' }}
       </button>
     </div>
 
-    <div v-show="open">
+    <div v-show="panelOpen">
       <div v-if="loading" class="empty muted">查詢中…</div>
       <div v-else-if="!rows.length" class="empty muted">沒有符合條件的權證</div>
       <div v-else class="table-wrap">
@@ -97,6 +107,7 @@ function daysClass(days) {
               v-for="row in rows"
               :key="`${row.market}-${row.warrant_code}`"
               :class="{ selected: selectedCode === row.warrant_code }"
+              @click="emit('select', row)"
             >
               <td class="mono">{{ row.warrant_code }}</td>
               <td>{{ row.warrant_name }}</td>
@@ -117,22 +128,6 @@ function daysClass(days) {
               </td>
               <td class="num mono">{{ fmt(row.latest_exercise_ratio, 4) }}</td>
               <td class="mono">{{ row.expiry_date || '—' }}</td>
-              <td class="action-col">
-                <div class="action-btns">
-                  <button
-                    type="button"
-                    class="row-info-btn"
-                    title="基本資料"
-                    @click.stop="emit('select', row)"
-                  >基本資料</button>
-                  <button
-                    type="button"
-                    class="row-ta-btn"
-                    title="技術分析"
-                    @click.stop="emit('analyze', row)"
-                  >技術分析</button>
-                </div>
-              </td>
             </tr>
           </tbody>
         </table>
@@ -192,6 +187,16 @@ function daysClass(days) {
 .head.toggle:hover h2 {
   color: var(--cyan-bright);
 }
+.head-static {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+}
+.screener--results {
+  margin-top: 0;
+}
 .head-main {
   display: flex;
   align-items: baseline;
@@ -241,23 +246,12 @@ function daysClass(days) {
   padding: 0.06rem 0.38rem;
 }
 .screener table.data tbody tr {
-  cursor: default;
+  cursor: pointer;
 }
 .screener table.data tbody tr:hover {
-  background: transparent;
+  background: rgba(0, 212, 255, 0.04);
 }
 .screener table.data tbody tr.selected {
   background: rgba(0, 212, 255, 0.08);
-}
-.action-btns {
-  display: flex;
-  flex-direction: column;
-  gap: 0.22rem;
-  align-items: stretch;
-}
-.action-btns .row-info-btn,
-.action-btns .row-ta-btn {
-  width: 100%;
-  min-width: 4.6rem;
 }
 </style>

@@ -13,9 +13,11 @@ import { useAuth } from './lib/auth'
 import MasterScreener from './components/MasterScreener.vue'
 import RankingPanel from './components/RankingPanel.vue'
 import StockChartECharts from './components/StockChartECharts.vue'
-import WarrantDetail from './components/WarrantDetail.vue'
 import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
-import { exportMasterToExcel } from './utils/exportMasterExcel.js'
+import { exportMasterToExcel, fetchAllMasterRows } from './utils/exportMasterExcel.js'
+import { exportHeatToExcel } from './utils/exportHeatExcel.js'
+import { filterMasterRowsByTa } from './utils/taScreenFilter.js'
+import { hasActiveTaFilters } from './lib/taScreenRules.js'
 
 const {
   isAuthenticated,
@@ -73,11 +75,21 @@ const filters = reactive({
   pageSize: 50,
 })
 
+const taFilters = reactive({
+  reversalFirstRed: false,
+  ma5gtMa10: false,
+  duoKongTrendFirstRed: false,
+})
+
 const masterRows = ref([])
 const masterTotal = ref(0)
+const taFilteredRows = ref([])
 const loadingMaster = ref(false)
 const masterScreenerOpen = ref(false)
+const showMasterResults = ref(false)
 const exportingMaster = ref(false)
+const heatSectionOpen = ref(false)
+const exportingHeat = ref(false)
 
 const dates = ref([])
 const selectedDate = ref('')
@@ -92,8 +104,6 @@ const detail = ref(null)
 const loadingDetail = ref(false)
 const techChartRef = ref(null)
 const chartFullscreen = ref(false)
-const detailAnchor = ref(null)
-const masterDetailAnchor = ref(null)
 
 async function loadStats() {
   try {
@@ -112,6 +122,27 @@ const latestTradeDate = computed(() => {
   return a || b || '—'
 })
 
+const heatSummaryLabel = computed(() => {
+  if (loadingRankings.value) return '載入中…'
+  const parts = []
+  if (selectedDate.value) parts.push(selectedDate.value)
+  if (rankings.value.length) parts.push(`${rankings.value.length} 檔`)
+  else if (rankingsError.value) parts.push('無資料')
+  return parts.join(' · ') || '—'
+})
+
+const masterSearchSummary = computed(() => {
+  const parts = []
+  if (filters.q?.trim()) parts.push(`關鍵字「${filters.q.trim()}」`)
+  if (filters.type) parts.push(filters.type)
+  const ta = []
+  if (taFilters.reversalFirstRed) ta.push('小不點第一根紅')
+  if (taFilters.ma5gtMa10) ta.push('5均>10均')
+  if (taFilters.duoKongTrendFirstRed) ta.push('多空趨勢線第一根紅')
+  if (ta.length) parts.push(ta.join('＋'))
+  return parts.length ? parts.join(' · ') : '全部未到期主檔'
+})
+
 function numOrUndef(v) {
   if (v === '' || v == null) return undefined
   const n = Number(v)
@@ -121,6 +152,29 @@ function numOrUndef(v) {
 async function loadMaster() {
   loadingMaster.value = true
   try {
+    if (hasActiveTaFilters(taFilters)) {
+      statusText.value = '主檔查詢中（含技術分析篩選）…'
+      const allRows = await fetchAllMasterRows(filters, numOrUndef, {
+        onProgress: ({ loaded, total }) => {
+          statusText.value = `載入主檔 ${loaded.toLocaleString()} / ${total.toLocaleString()}…`
+        },
+      })
+      statusText.value = `技術分析篩選中… 0 / ${allRows.length}`
+      const filtered = await filterMasterRowsByTa(allRows, taFilters, {
+        onProgress: ({ done, total }) => {
+          statusText.value = `技術分析篩選 ${done} / ${total}…`
+        },
+      })
+      taFilteredRows.value = filtered
+      masterTotal.value = filtered.length
+      const page = Math.max(1, filters.page)
+      const start = (page - 1) * filters.pageSize
+      masterRows.value = filtered.slice(start, start + filters.pageSize)
+      statusText.value = `符合 ${filtered.length.toLocaleString()} 檔（技術＋基本面）· 第 ${page} 頁`
+      return
+    }
+
+    taFilteredRows.value = []
     const data = await fetchMasterSearch({
       q: filters.q || undefined,
       market: filters.market,
@@ -273,22 +327,13 @@ async function selectWarrant(row) {
       }
     }
     await nextTick()
-    const scrollTarget = masterScreenerOpen.value
-      ? masterDetailAnchor.value
-      : detailAnchor.value
-    scrollTarget?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
+    openTechChartOrLogin()
   } catch (err) {
     console.error(err)
     statusText.value = `載入詳情失敗：${err.message}`
   } finally {
     loadingDetail.value = false
   }
-}
-
-async function analyzeWarrant(row) {
-  if (!masterScreenerOpen.value) masterScreenerOpen.value = true
-  await selectWarrant(row)
-  openTechChartOrLogin()
 }
 
 function onChartFullscreenChange(active) {
@@ -307,15 +352,18 @@ function openTechChartOrLogin() {
   })
 }
 
-function closeDetail() {
-  detail.value = null
-  selected.value = null
-}
-
-function onSearch() {
+async function onSearch() {
   filters.page = 1
   masterScreenerOpen.value = true
-  loadMaster()
+  await loadMaster()
+  showMasterResults.value = true
+  await nextTick()
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function backToSearch() {
+  showMasterResults.value = false
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 async function selectMasterWarrant(row) {
@@ -352,6 +400,35 @@ function toggleMasterScreener() {
   if (opening) loadMaster()
 }
 
+function toggleHeatSection() {
+  heatSectionOpen.value = !heatSectionOpen.value
+}
+
+function onExportHeat() {
+  exportingHeat.value = true
+  statusText.value = '正在準備 Excel…'
+  try {
+    const count = exportHeatToExcel(rankings.value, { tradeDate: selectedDate.value })
+    statusText.value = `已匯出 ${count.toLocaleString()} 檔熱度排行`
+  } catch (err) {
+    statusText.value = err.message || '熱度匯出失敗'
+  } finally {
+    exportingHeat.value = false
+  }
+}
+
+function toggleTaFilter(key) {
+  taFilters[key] = !taFilters[key]
+}
+
+function clearTechnicalFilters() {
+  taFilters.reversalFirstRed = false
+  taFilters.ma5gtMa10 = false
+  taFilters.duoKongTrendFirstRed = false
+  filters.page = 1
+  loadMaster()
+}
+
 function clearFundamentalFilters() {
   filters.expiryFrom = ''
   filters.expiryTo = ''
@@ -367,6 +444,12 @@ function clearFundamentalFilters() {
 
 function onPage(p) {
   filters.page = p
+  if (hasActiveTaFilters(taFilters) && taFilteredRows.value.length) {
+    const start = (p - 1) * filters.pageSize
+    masterRows.value = taFilteredRows.value.slice(start, start + filters.pageSize)
+    statusText.value = `符合 ${masterTotal.value.toLocaleString()} 檔（技術＋基本面）· 第 ${p} 頁`
+    return
+  }
   loadMaster()
 }
 
@@ -441,6 +524,7 @@ onMounted(async () => {
     </div>
     <p v-if="authStatus" class="auth-status muted">{{ authStatus }}</p>
 
+    <template v-if="!showMasterResults">
     <header class="hero">
       <div class="hero-copy">
         <div class="brand-row">
@@ -491,7 +575,7 @@ onMounted(async () => {
             <span class="sep">–</span>
             <input v-model="filters.closeMax" type="number" step="any" min="0" placeholder="高" />
           </div>
-          <div class="range-field">
+          <div class="range-field range-field--exercise">
             <label>履約價</label>
             <input v-model="filters.exerciseMin" type="number" step="any" min="0" placeholder="低" />
             <span class="sep">–</span>
@@ -512,8 +596,42 @@ onMounted(async () => {
         </div>
       </div>
 
+      <div class="fund-block ta-block">
+        <div class="fund-head">
+          <h3>技術分析</h3>
+        </div>
+        <div class="ta-chip-row">
+          <button
+            type="button"
+            class="chip-btn"
+            :class="{ active: taFilters.reversalFirstRed }"
+            @click="toggleTaFilter('reversalFirstRed')"
+          >小不點第一根紅</button>
+          <button
+            type="button"
+            class="chip-btn"
+            :class="{ active: taFilters.ma5gtMa10 }"
+            @click="toggleTaFilter('ma5gtMa10')"
+          >5均 &gt; 10均</button>
+          <button
+            type="button"
+            class="chip-btn"
+            :class="{ active: taFilters.duoKongTrendFirstRed }"
+            @click="toggleTaFilter('duoKongTrendFirstRed')"
+          >多空趨勢線第一根紅</button>
+          <button
+            v-if="taFilters.reversalFirstRed || taFilters.ma5gtMa10 || taFilters.duoKongTrendFirstRed"
+            type="button"
+            class="chip-clear"
+            @click="clearTechnicalFilters"
+          >清除技術條件</button>
+        </div>
+      </div>
+
       <div class="actions">
-        <button class="primary" @click="onSearch">搜尋主檔</button>
+        <button class="primary" :disabled="loadingMaster" @click="onSearch">
+          {{ loadingMaster ? '搜尋中…' : '搜尋主檔' }}
+        </button>
         <button type="button" @click="clearFundamentalFilters">清除基本面條件</button>
         <button
           v-if="isAdmin"
@@ -526,109 +644,93 @@ onMounted(async () => {
     </section>
 
     <section class="heat-section">
-      <div class="heat-toolbar panel">
-        <h2 class="heat-title">當日熱度</h2>
-        <div class="heat-rows">
-          <div class="heat-row">
-            <span class="heat-row-label">日期</span>
-            <div class="chip-scroll">
-              <button
-                v-for="d in dates"
-                :key="d"
-                type="button"
-                class="chip-btn"
-                :class="{ active: selectedDate === d }"
-                @click="setHeatDate(d)"
-              >{{ d }}</button>
-            </div>
+      <div class="heat-head-row panel">
+        <button type="button" class="heat-head toggle" @click="toggleHeatSection">
+          <div class="heat-head-main">
+            <h2>當日熱度</h2>
+            <span class="muted">{{ heatSummaryLabel }}</span>
           </div>
-          <div class="heat-row heat-row--controls">
-            <span class="heat-row-label">市場</span>
-            <div class="chip-btns">
-              <button type="button" class="chip-btn" :class="{ active: heatMarket === 'both' }" @click="setHeatMarket('both')">全市場</button>
-              <button type="button" class="chip-btn" :class="{ active: heatMarket === 'twse' }" @click="setHeatMarket('twse')">上市</button>
-              <button type="button" class="chip-btn" :class="{ active: heatMarket === 'tpex' }" @click="setHeatMarket('tpex')">上櫃</button>
-            </div>
-            <span class="heat-row-label">類型</span>
-            <div class="chip-btns">
-              <button type="button" class="chip-btn" :class="{ active: heatType === '' }" @click="setHeatType('')">全部</button>
-              <button type="button" class="chip-btn" :class="{ active: heatType === '認購' }" @click="setHeatType('認購')">認購</button>
-              <button type="button" class="chip-btn" :class="{ active: heatType === '認售' }" @click="setHeatType('認售')">認售</button>
-            </div>
-            <span class="heat-row-label">指標</span>
-            <div class="chip-btns">
-              <button type="button" class="chip-btn" :class="{ active: metric === 'turnover' }" @click="setMetric('turnover')">成交金額</button>
-              <button type="button" class="chip-btn" :class="{ active: metric === 'volume' }" @click="setMetric('volume')">成交張數</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <RankingPanel
-        :rows="rankings"
-        :loading="loadingRankings"
-        :selected-code="selected?.warrant_code || ''"
-        :metric="metric"
-        :heat-type="heatType"
-        :api-type="rankingsMeta.type"
-        :error-text="rankingsError"
-        :trade-date="selectedDate"
-        @select="selectWarrant"
-        @analyze="analyzeWarrant"
-      />
-
-      <p v-if="!selected && !loadingDetail && rankings.length" class="heat-hint muted">
-        點選上方排行中的權證，下方會出現詳情與「技術分析」按鈕
-      </p>
-
-      <div
-        v-if="selected"
-        ref="detailAnchor"
-        class="heat-action-bar"
-      >
-        <div class="heat-action-copy">
-          <span class="mono">{{ selected.warrant_code }}</span>
-          <span>{{ selected.warrant_name }}</span>
-        </div>
+          <span class="chev" aria-hidden="true">{{ heatSectionOpen ? '▾' : '▸' }}</span>
+        </button>
         <button
           type="button"
-          class="primary ta-btn"
-          :disabled="loadingDetail"
-          @click="openTechChartOrLogin"
+          class="export-btn"
+          :disabled="exportingHeat || loadingRankings || !rankings.length"
+          @click.stop="onExportHeat"
         >
-          {{ loadingDetail ? '載入中…' : '技術分析' }}
+          {{ exportingHeat ? '匯出中…' : '下載 Excel' }}
         </button>
       </div>
 
-      <WarrantDetail
-        v-if="(detail || loadingDetail) && !masterScreenerOpen"
-        flat
-        :detail="detail"
-        :loading="loadingDetail"
-        @close="closeDetail"
-        @open-chart="openTechChartOrLogin"
-      />
+      <div v-show="heatSectionOpen">
+        <div class="heat-toolbar panel">
+          <div class="heat-rows">
+            <div class="heat-row">
+              <span class="heat-row-label">日期</span>
+              <div class="chip-scroll">
+                <button
+                  v-for="d in dates"
+                  :key="d"
+                  type="button"
+                  class="chip-btn"
+                  :class="{ active: selectedDate === d }"
+                  @click="setHeatDate(d)"
+                >{{ d }}</button>
+              </div>
+            </div>
+            <div class="heat-row heat-row--controls">
+              <span class="heat-row-label">市場</span>
+              <div class="chip-btns">
+                <button type="button" class="chip-btn" :class="{ active: heatMarket === 'both' }" @click="setHeatMarket('both')">全市場</button>
+                <button type="button" class="chip-btn" :class="{ active: heatMarket === 'twse' }" @click="setHeatMarket('twse')">上市</button>
+                <button type="button" class="chip-btn" :class="{ active: heatMarket === 'tpex' }" @click="setHeatMarket('tpex')">上櫃</button>
+              </div>
+              <span class="heat-row-label">類型</span>
+              <div class="chip-btns">
+                <button type="button" class="chip-btn" :class="{ active: heatType === '' }" @click="setHeatType('')">全部</button>
+                <button type="button" class="chip-btn" :class="{ active: heatType === '認購' }" @click="setHeatType('認購')">認購</button>
+                <button type="button" class="chip-btn" :class="{ active: heatType === '認售' }" @click="setHeatType('認售')">認售</button>
+              </div>
+              <span class="heat-row-label">指標</span>
+              <div class="chip-btns">
+                <button type="button" class="chip-btn" :class="{ active: metric === 'turnover' }" @click="setMetric('turnover')">成交金額</button>
+                <button type="button" class="chip-btn" :class="{ active: metric === 'volume' }" @click="setMetric('volume')">成交張數</button>
+              </div>
+            </div>
+          </div>
+        </div>
 
-      <div class="chart-host" aria-hidden="true">
-        <StockChartECharts
-          v-if="isAuthenticated"
-          ref="techChartRef"
-          class="warrant-stock-chart"
-          :symbol="selected?.warrant_code || ''"
-          :stock-name="selected?.warrant_name || ''"
-          :warrant-info="detail"
-          period="1D"
-          :fullscreen-search-enabled="false"
-          @fullscreen-change="onChartFullscreenChange"
+        <RankingPanel
+          :rows="rankings"
+          :loading="loadingRankings"
+          :selected-code="selected?.warrant_code || ''"
+          :metric="metric"
+          :heat-type="heatType"
+          :api-type="rankingsMeta.type"
+          :error-text="rankingsError"
+          :trade-date="selectedDate"
+          @select="selectWarrant"
         />
       </div>
     </section>
+    </template>
 
-    <p class="status muted">{{ statusText }}</p>
+    <template v-else>
+      <section class="results-page">
+        <div class="results-nav panel">
+          <button type="button" class="back-btn" @click="backToSearch">
+            ← 返回搜尋條件
+          </button>
+          <div class="results-copy">
+            <h1 class="results-title">主檔搜尋結果</h1>
+            <p class="results-summary muted">{{ masterSearchSummary }}</p>
+          </div>
+        </div>
 
-    <div class="workspace">
-      <div class="col-main">
+        <p class="status muted">{{ statusText }}</p>
+
         <MasterScreener
+          results-mode
           :rows="masterRows"
           :total="masterTotal"
           :stats-total="stats?.total_master || 0"
@@ -637,25 +739,26 @@ onMounted(async () => {
           :loading="loadingMaster"
           :exporting="exportingMaster"
           :selected-code="selected?.warrant_code || ''"
-          :open="masterScreenerOpen"
+          :open="true"
           @select="selectMasterWarrant"
-          @analyze="analyzeWarrant"
           @page="onPage"
-          @toggle="toggleMasterScreener"
           @export="onExportMaster"
         />
+      </section>
+    </template>
 
-        <div ref="masterDetailAnchor">
-          <WarrantDetail
-            v-if="masterScreenerOpen && (detail || loadingDetail)"
-            flat
-            :detail="detail"
-            :loading="loadingDetail"
-            @close="closeDetail"
-            @open-chart="openTechChartOrLogin"
-          />
-        </div>
-      </div>
+    <div class="chart-host" aria-hidden="true">
+      <StockChartECharts
+        v-if="isAuthenticated"
+        ref="techChartRef"
+        class="warrant-stock-chart"
+        :symbol="selected?.warrant_code || ''"
+        :stock-name="selected?.warrant_name || ''"
+        :warrant-info="detail"
+        period="1D"
+        :fullscreen-search-enabled="false"
+        @fullscreen-change="onChartFullscreenChange"
+      />
     </div>
   </div>
 </template>
@@ -829,13 +932,67 @@ onMounted(async () => {
   margin-bottom: 1rem;
   animation: rise 0.85s ease both;
 }
-.heat-toolbar {
-  padding: 0.85rem 1rem 0.95rem;
+.heat-head-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 1.1rem;
 }
-.heat-title {
-  margin: 0 0 0.65rem;
+.heat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.heat-head.toggle:hover h2 {
+  color: var(--cyan-bright);
+}
+.heat-head-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  min-width: 0;
+}
+.heat-head-main h2 {
+  margin: 0;
   font-size: 1.05rem;
   font-weight: 650;
+}
+.heat-head .chev {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+.export-btn {
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 212, 255, 0.35);
+  background: rgba(0, 212, 255, 0.08);
+  color: var(--cyan-bright);
+  border-radius: 8px;
+  padding: 0.38rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.export-btn:hover:not(:disabled) {
+  border-color: rgba(0, 212, 255, 0.55);
+  background: rgba(0, 212, 255, 0.14);
+}
+.export-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.heat-toolbar {
+  padding: 0.85rem 1rem 0.95rem;
 }
 .heat-rows {
   display: grid;
@@ -894,39 +1051,6 @@ onMounted(async () => {
   border-color: rgba(0, 212, 255, 0.45);
   background: rgba(0, 212, 255, 0.1);
 }
-.heat-hint {
-  margin: 0;
-  padding: 0.35rem 0.15rem 0;
-  font-size: 0.82rem;
-  text-align: center;
-}
-.heat-action-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.65rem 1rem;
-  padding: 0.65rem 0.85rem;
-  border: 1px solid rgba(0, 212, 255, 0.28);
-  border-radius: 12px;
-  background: rgba(0, 212, 255, 0.06);
-}
-.heat-action-copy {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem 0.55rem;
-  min-width: 0;
-  font-size: 0.88rem;
-}
-.heat-action-copy .mono {
-  font-weight: 700;
-  color: var(--cyan-bright);
-}
-.ta-btn {
-  flex-shrink: 0;
-  min-width: 7rem;
-}
 .type-toggle {
   margin-top: 0.55rem;
 }
@@ -964,7 +1088,7 @@ onMounted(async () => {
 }
 .fund-head h3 {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   font-weight: 650;
   color: #e8f4ff;
   white-space: nowrap;
@@ -973,39 +1097,90 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem 0.65rem;
+  gap: 0.45rem 0.85rem;
   flex: 1;
   min-width: 0;
 }
 .range-field {
   display: inline-flex;
   align-items: center;
-  gap: 0.22rem;
+  gap: 0.32rem;
   flex: 0 0 auto;
 }
 .range-field label {
   margin: 0;
   color: var(--text-dim);
-  font-size: 0.74rem;
+  font-size: 0.82rem;
   white-space: nowrap;
 }
 .range-field .sep {
   color: #8fa3b3;
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   line-height: 1;
   user-select: none;
 }
 .range-field input {
-  width: 3.6rem;
+  width: 4.25rem;
   min-width: 0;
-  padding: 0.2rem 0.32rem;
-  font-size: 0.76rem;
-  border-radius: 5px;
+  padding: 0.32rem 0.42rem;
+  font-size: 0.86rem;
+  border-radius: 6px;
+}
+.range-field--exercise input {
+  width: 5.85rem;
 }
 .range-field--date input {
-  width: 7.4rem;
-  padding: 0.18rem 0.28rem;
-  font-size: 0.72rem;
+  width: 8.1rem;
+  padding: 0.3rem 0.38rem;
+  font-size: 0.84rem;
+}
+.ta-block {
+  border-top: 1px solid rgba(148, 183, 205, 0.14);
+  padding-top: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+}
+.ta-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  flex: 1;
+  min-width: 0;
+}
+.ta-chip-row .chip-btn {
+  border: 1px solid var(--line);
+  background: rgba(7, 11, 20, 0.55);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 0.28rem 0.72rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ta-chip-row .chip-btn:hover {
+  border-color: rgba(0, 212, 255, 0.35);
+  color: var(--text);
+}
+.ta-chip-row .chip-btn.active {
+  color: var(--cyan-bright);
+  border-color: rgba(0, 212, 255, 0.45);
+  background: rgba(0, 212, 255, 0.1);
+}
+.chip-clear {
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.chip-clear:hover {
+  color: var(--cyan-bright);
 }
 .actions {
   display: flex;
@@ -1016,6 +1191,45 @@ onMounted(async () => {
   margin: 0 0 1rem;
   min-height: 1.25rem;
   font-size: 0.9rem;
+}
+.results-page {
+  display: grid;
+  gap: 0.85rem;
+  animation: rise 0.85s ease both;
+}
+.results-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
+}
+.back-btn {
+  flex-shrink: 0;
+  border: 1px solid rgba(148, 183, 205, 0.35);
+  background: rgba(7, 11, 20, 0.55);
+  color: var(--text-dim);
+  border-radius: 8px;
+  padding: 0.42rem 0.85rem;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+.back-btn:hover {
+  border-color: rgba(0, 212, 255, 0.45);
+  color: var(--cyan-bright);
+}
+.results-copy {
+  min-width: 0;
+  flex: 1;
+}
+.results-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 650;
+}
+.results-summary {
+  margin: 0.25rem 0 0;
+  font-size: 0.84rem;
 }
 
 .workspace {
