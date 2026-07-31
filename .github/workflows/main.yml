@@ -1,0 +1,108 @@
+name: Import latest warrants daily
+
+on:
+  schedule:
+    - cron: '0 16 * * *'  # UTC 16:00 = 台灣每日 00:00
+  workflow_dispatch:
+
+concurrency:
+  group: import-latest
+  cancel-in-progress: false
+
+jobs:
+  import-latest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call backend import endpoint
+        run: |
+          set -e
+          URL="${{ secrets.BACKEND_IMPORT_URL }}"
+          TOKEN="${{ secrets.BACKEND_IMPORT_TOKEN }}"
+          if [ -z "$URL" ]; then
+            echo "BACKEND_IMPORT_URL secret is required (e.g. https://twse-warrant-volume-radar.onrender.com/api/warrants/import-latest)"
+            exit 1
+          fi
+          echo "POST $URL"
+
+          AUTH_ARGS=""
+          if [ -n "$TOKEN" ]; then
+            AUTH_ARGS="-H \"Authorization: Bearer $TOKEN\""
+          fi
+
+          # Warm up backend to avoid Render cold-start timeouts
+          HEALTH_URL="$URL"
+          HEALTH_URL="${HEALTH_URL%/api/warrants/import-latest}/api/health"
+          STATUS_URL="${HEALTH_URL%/api/health}/api/warrants/import-status"
+          echo "Warm up: $HEALTH_URL"
+          eval "curl -sS --max-time 20 $AUTH_ARGS $HEALTH_URL" || true
+
+          echo "Status endpoint: $STATUS_URL"
+
+          # Trigger import (backend responds quickly with 202 and does work in background)
+          set +e
+          HTTP_CODE=$(eval "curl -X POST -sS --max-time 30 $AUTH_ARGS -o trigger.json -w \"%{http_code}\" $URL")
+          CURL_EXIT=$?
+          set -e
+
+          if [ $CURL_EXIT -ne 0 ]; then
+            {
+              echo "## Import latest warrants"
+              echo "- **Success**: false"
+              echo "- **Message**: trigger curl failed (exit $CURL_EXIT)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          TRIGGER_BODY=$(cat trigger.json || true)
+          echo "$TRIGGER_BODY"
+          echo "Trigger HTTP: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "202" ] && [ "$HTTP_CODE" != "409" ]; then
+            {
+              echo "## Import latest warrants"
+              echo "- **Success**: false"
+              echo "- **HTTP**: $HTTP_CODE"
+              echo "- **Body**: $TRIGGER_BODY"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          # Poll status until done (max ~10 minutes)
+          POLL_TIMES=40
+          for i in $(seq 1 $POLL_TIMES); do
+            sleep 15
+            STATUS_BODY=$(eval "curl -sS --max-time 20 $AUTH_ARGS $STATUS_URL")
+            IN_PROGRESS=$(echo "$STATUS_BODY" | jq -r '.inProgress // false' 2>/dev/null || echo "false")
+            STATE=$(echo "$STATUS_BODY" | jq -r '.status.state // ""' 2>/dev/null || echo "")
+            SUCCESS=$(echo "$STATUS_BODY" | jq -r '.status.success' 2>/dev/null || echo "null")
+            MSG=$(echo "$STATUS_BODY" | jq -r '(.status.message // .status.error // "")' 2>/dev/null || echo "")
+            IMPORTED=$(echo "$STATUS_BODY" | jq -r '(.status.importedCount // "")' 2>/dev/null || echo "")
+            TRADE_DATE=$(echo "$STATUS_BODY" | jq -r '(.status.tradeDate // "")' 2>/dev/null || echo "")
+            ELAPSED=$(echo "$STATUS_BODY" | jq -r '(.elapsedSeconds // "")' 2>/dev/null || echo "")
+
+            echo "Poll $i/$POLL_TIMES: inProgress=$IN_PROGRESS state=$STATE elapsed=${ELAPSED}s"
+
+            if [ "$IN_PROGRESS" = "true" ] || [ "$STATE" = "running" ]; then
+              continue
+            fi
+
+            {
+              echo "## Import latest warrants"
+              echo "- **Success**: $SUCCESS"
+              [ -n "$MSG" ] && echo "- **Message**: $MSG" || true
+              [ -n "$IMPORTED" ] && echo "- **ImportedCount**: $IMPORTED" || true
+              [ -n "$TRADE_DATE" ] && echo "- **TradeDate**: $TRADE_DATE" || true
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            if [ "$SUCCESS" = "true" ]; then
+              exit 0
+            fi
+            exit 1
+          done
+
+          {
+            echo "## Import latest warrants"
+            echo "- **Success**: false"
+            echo "- **Message**: timeout waiting for import to finish"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
