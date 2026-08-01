@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx'
 import { fetchMasterSearch } from '../api'
 import { warrantTypeLabel } from './warrantDisplay'
 import { downloadExcelFile } from './downloadExcel.js'
+import { enrichMasterRowsWithGrades } from './taScreenFilter.js'
 
 function pad2(n) {
   return String(n).padStart(2, '0')
@@ -105,9 +106,20 @@ export async function fetchMasterRowsUpTo(filters, numOrUndef, maxRows = 200) {
   return allRows.slice(0, cap)
 }
 
+async function ensureRowsWithGrades(rows, onProgress) {
+  if (!rows?.length || rows.every((row) => row.warrant_grade)) return rows
+  onProgress?.({ phase: 'grade', done: 0, total: rows.length })
+  return enrichMasterRowsWithGrades(rows, {
+    onProgress: ({ done, total }) => onProgress?.({ phase: 'grade', done, total }),
+  })
+}
+
 export async function exportMasterToExcel(filters, numOrUndef, { onProgress, rows: presetRows } = {}) {
-  const rows = presetRows?.length
+  let rows = presetRows?.length
     ? presetRows
-    : await fetchAllMasterRows(filters, numOrUndef, { onProgress })
+    : await fetchAllMasterRows(filters, numOrUndef, {
+      onProgress: ({ loaded, total }) => onProgress?.({ phase: 'load', loaded, total }),
+    })
+  rows = await ensureRowsWithGrades(rows, onProgress)
   return exportRowsToExcel(rows)
 }

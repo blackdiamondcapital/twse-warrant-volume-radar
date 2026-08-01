@@ -50,7 +50,7 @@ const columns = computed(() => {
     { key: 'close', label: '收盤', align: 'num' },
     { key: 'volume', label: '成交量', shortLabel: '成交量', align: 'num' },
     { key: 'exercise', label: '履約價', shortLabel: '履約價', align: 'num' },
-    { key: 'days', label: '剩餘天數', shortLabel: '剩餘天數', align: 'num' },
+    { key: 'days', label: '剩餘天數', shortLabelLines: ['剩餘', '天數'], align: 'num' },
     { key: 'expiry', label: '到期日', shortLabel: '到期' },
   )
   return base
@@ -141,7 +141,10 @@ function gradeClass(grade) {
                 :class="[col.align, col.key === 'expiry' ? 'cell-expiry' : '', col.key === 'days' ? 'cell-days' : '']"
               >
                 <span class="col-label-full">{{ col.label }}</span>
-                <span class="col-label-short">{{ col.shortLabel || col.label }}</span>
+                <span v-if="col.shortLabelLines" class="col-label-short col-label-short--stacked">
+                  <span v-for="(line, i) in col.shortLabelLines" :key="i">{{ line }}</span>
+                </span>
+                <span v-else class="col-label-short">{{ col.shortLabel || col.label }}</span>
               </th>
             </tr>
           </thead>
@@ -212,9 +215,21 @@ function gradeClass(grade) {
 .screener table.data th.cell-days,
 .screener table.data td.cell-days {
   width: 1%;
-  white-space: nowrap;
   padding-left: 0.2rem;
   padding-right: 0.2rem;
+}
+.screener table.data th.cell-days {
+  white-space: normal;
+}
+.col-label-short--stacked {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  line-height: 1.1;
+}
+.screener table.data td.cell-days {
+  white-space: nowrap;
 }
 .expiry-short { display: none; }
 .head-row {
@@ -387,15 +402,14 @@ function gradeClass(grade) {
   }
   .screener table.data th.cell-days,
   .screener table.data td.cell-days {
-    max-width: 2.65rem;
+    max-width: 2.4rem;
     padding-left: 0.08rem;
     padding-right: 0.08rem;
   }
-  .screener table.data th.cell-days .col-label-short {
+  .screener table.data th.cell-days .col-label-short--stacked {
+    display: flex;
     font-size: 0.58rem;
     letter-spacing: -0.04em;
-    white-space: nowrap;
-    line-height: 1.15;
   }
   .screener table.data td.cell-days {
     font-size: 0.72rem;

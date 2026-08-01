@@ -12098,38 +12098,40 @@ onUnmounted(() => {
         :class="{ 'fullscreen-active': isFullscreen }"
       >
         <!-- 手機版：顯示根數與週期按鈕包裝在一起 -->
-        <div class="mobile-period-row">
-          <div v-if="isWarrantRadar" class="period-chips-scroll warrant-period-chip-wrap">
-            <span class="period-chip active warrant-period-chip">日線</span>
-          </div>
-          <div class="visible-count-stepper">
-            <button class="stepper-btn" type="button" @click="decrementKCount" title="減少根數">－</button>
-            <input
-              class="stepper-value"
-              type="number"
-              v-model.number="desiredKCount"
-              min="20"
-              :max="chartData.length"
-              inputmode="numeric"
-              @keyup.enter.prevent="applyDesiredKCount"
-              @blur="applyDesiredKCount"
-            />
-            <button class="stepper-btn" type="button" @click="incrementKCount" title="增加根數">＋</button>
-          </div>
-          <div
-            v-if="warrantLatestQuoteDisplay"
-            class="warrant-latest-quote-bar"
-            :class="{ 'is-pinned': warrantLatestQuoteDisplay.pinned }"
-            aria-live="polite"
-          >
-            <span v-if="warrantLatestQuoteDisplay.pinned" class="warrant-latest-quote-bar__tag">查價</span>
-            <span class="warrant-latest-quote-bar__date">{{ warrantLatestQuoteDisplay.dateStr }}</span>
-            <span class="warrant-latest-quote-bar__close">{{ warrantLatestQuoteDisplay.close }}</span>
-            <span
-              v-if="warrantLatestQuoteDisplay.pctStr"
-              class="warrant-latest-quote-bar__pct"
-              :class="warrantLatestQuoteDisplay.pctUp ? 'is-up' : 'is-down'"
-            >{{ warrantLatestQuoteDisplay.pctStr }}</span>
+        <div class="mobile-period-row" :class="{ 'mobile-period-row--warrant': isWarrantRadar }">
+          <div class="mobile-period-main" :class="{ 'mobile-period-main--warrant': isWarrantRadar }">
+            <span v-if="isWarrantRadar" class="warrant-period-label">日線</span>
+            <div class="mobile-period-tools">
+              <div class="visible-count-stepper">
+                <button class="stepper-btn" type="button" @click="decrementKCount" title="減少根數">－</button>
+                <input
+                  class="stepper-value"
+                  type="number"
+                  v-model.number="desiredKCount"
+                  min="20"
+                  :max="chartData.length"
+                  inputmode="numeric"
+                  @keyup.enter.prevent="applyDesiredKCount"
+                  @blur="applyDesiredKCount"
+                />
+                <button class="stepper-btn" type="button" @click="incrementKCount" title="增加根數">＋</button>
+              </div>
+              <div
+                v-if="isWarrantRadar && warrantLatestQuoteDisplay"
+                class="warrant-latest-quote-bar"
+                :class="{ 'is-pinned': warrantLatestQuoteDisplay.pinned }"
+                aria-live="polite"
+              >
+                <span v-if="warrantLatestQuoteDisplay.pinned" class="warrant-latest-quote-bar__tag">查價</span>
+                <span class="warrant-latest-quote-bar__date">{{ warrantLatestQuoteDisplay.dateStr }}</span>
+                <span class="warrant-latest-quote-bar__close">{{ warrantLatestQuoteDisplay.close }}</span>
+                <span
+                  v-if="warrantLatestQuoteDisplay.pctStr"
+                  class="warrant-latest-quote-bar__pct"
+                  :class="warrantLatestQuoteDisplay.pctUp ? 'is-up' : 'is-down'"
+                >{{ warrantLatestQuoteDisplay.pctStr }}</span>
+              </div>
+            </div>
           </div>
           <div v-if="!isWarrantRadar" class="period-chips-scroll">
             <button
@@ -14608,12 +14610,68 @@ onUnmounted(() => {
   position: relative;
   z-index: 5;
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
+}
+
+.mobile-period-main {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.mobile-period-main--warrant {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.mobile-period-tools {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.mobile-period-row--warrant {
+  flex-direction: column;
+  align-items: flex-start;
+  overflow: visible;
+}
+
+.warrant-period-label {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  padding: 0.14rem 0.48rem;
+  border-radius: 999px;
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.1);
+  white-space: nowrap;
+}
+
+@media (min-width: 769px) {
+  .mobile-period-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+  .mobile-period-main {
+    width: auto;
+    flex: 0 1 auto;
+  }
 }
 
 /* 桌機／一般全螢幕：K 線／搜尋／圖示仍直接參與 .frequency-controls 排版 */
@@ -14811,24 +14869,6 @@ onUnmounted(() => {
   font-weight: 600;
   box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
   transform: translateY(-2px);
-}
-
-.warrant-period-chip-wrap {
-  flex: 0 0 auto;
-  order: -1;
-}
-.warrant-period-chip {
-  cursor: default;
-  pointer-events: none;
-  min-width: auto;
-  padding: 8px 16px;
-  font-size: 0.82rem;
-  white-space: nowrap;
-  writing-mode: horizontal-tb;
-}
-.warrant-period-chip:hover {
-  transform: none;
-  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
 }
 
 /* K線模式下拉 + 選用工具鈕（查價線） */
@@ -16626,6 +16666,15 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .mobile-period-row--warrant,
+.stock-chart.is-fullscreen .mobile-period-row--warrant,
+.stock-chart:-webkit-full-screen .mobile-period-row--warrant {
+  flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  align-items: flex-start !important;
+  overflow: visible !important;
+}
+
 .stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .mobile-period-row::-webkit-scrollbar,
 .stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .period-chips-scroll::-webkit-scrollbar,
 .stock-chart.is-fullscreen .mobile-period-row::-webkit-scrollbar,
@@ -18046,14 +18095,46 @@ onUnmounted(() => {
 
   .stock-chart:not(.is-fullscreen) .mobile-period-row {
     display: flex !important;
-    flex-direction: row !important;
+    flex-direction: column !important;
     flex-wrap: nowrap !important;
-    align-items: center;
-    gap: 8px;
+    align-items: flex-start !important;
+    gap: 4px;
     width: 100%;
     min-width: 0;
     padding-bottom: 6px;
     border-bottom: 1px solid rgba(100, 200, 255, 0.1);
+  }
+
+  .stock-chart:not(.is-fullscreen) .mobile-period-row--warrant {
+    overflow: visible;
+  }
+
+  .stock-chart:not(.is-fullscreen) .mobile-period-main {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .stock-chart:not(.is-fullscreen) .mobile-period-main--warrant {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .stock-chart:not(.is-fullscreen) .mobile-period-tools {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .stock-chart:not(.is-fullscreen) .warrant-period-label {
+    flex-shrink: 0;
   }
 
   .stock-chart:not(.is-fullscreen) .period-chips-scroll {
@@ -18354,16 +18435,50 @@ onUnmounted(() => {
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
   }
 
-  /* 手機版週期行：水平排列，可滾動 */
+  /* 手機版週期行：權證日線在上、棒數＋查價在下 */
   .stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .mobile-period-row {
     display: flex !important;
-    flex-direction: row !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+    width: 100%;
+    order: 1;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(96, 165, 250, 0.12);
+  }
+
+  .stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .mobile-period-row--warrant {
+    overflow: visible !important;
+  }
+
+  .stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .mobile-period-main {
+    display: flex;
+    flex-direction: row;
     align-items: center;
     gap: 8px;
     width: 100%;
-    order: 1;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(96, 165, 250, 0.12);
+    min-width: 0;
+  }
+
+  .stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .mobile-period-main--warrant {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 6px;
+  }
+
+  .stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .mobile-period-tools {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .warrant-period-label {
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin-top: 0;
   }
 
   /* 顯示根數：緊湊版 */
@@ -19120,9 +19235,22 @@ onUnmounted(() => {
     display: contents !important;
   }
 
-  /* 橫向模式：週期行恢復為 contents */
-  .stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .mobile-period-row {
+  /* 橫向模式：週期行恢復為 contents；權證保留獨立列避免日線被棒數遮住 */
+  .stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .mobile-period-row:not(.mobile-period-row--warrant) {
     display: contents !important;
+  }
+
+  .stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .mobile-period-row--warrant {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    overflow: visible !important;
+    flex-shrink: 0;
+  }
+
+  .stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .mobile-period-main--warrant {
+    flex-direction: column !important;
+    align-items: flex-start !important;
   }
 
   .stock-chart:is(:fullscreen, .is-fullscreen, :-webkit-full-screen) .period-chips-scroll {
