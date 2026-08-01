@@ -65,6 +65,17 @@ export async function fetchTimeseries({ code, limitDays = 90, start, end } = {})
   )
 }
 
+/** 後端批次技術面篩選（全市場／條件範圍，避免逐檔 timeseries） */
+export async function fetchTaScreen(params = {}) {
+  return unwrap(
+    await api.get('/warrants/portal/ta-screen', {
+      params,
+      timeout: 180000,
+    }),
+    '技術面篩選失敗',
+  )
+}
+
 export async function importLatestWarrants() {
   try {
     let authHeader = {}

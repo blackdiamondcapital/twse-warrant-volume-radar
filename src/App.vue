@@ -6,6 +6,7 @@ import {
   fetchMasterDetail,
   fetchDates,
   fetchRankings,
+  fetchTaScreen,
   importLatestWarrants,
 } from './api'
 import { fetchStockPriceHistory } from './services/api.js'
@@ -15,10 +16,10 @@ import MasterScreener from './components/MasterScreener.vue'
 import RankingPanel from './components/RankingPanel.vue'
 import StockChartECharts from './components/StockChartECharts.vue'
 import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
-import { exportMasterToExcel, fetchAllMasterRows, fetchMasterRowsUpTo } from './utils/exportMasterExcel.js'
+import { exportMasterToExcel, fetchMasterRowsUpTo } from './utils/exportMasterExcel.js'
 import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
-import { filterMasterRowsClient, enrichMasterRowsWithGrades, needsClientSideMasterFilter, clearMasterBarCache } from './utils/taScreenFilter.js'
+import { enrichMasterRowsWithGrades, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
 import { hasActiveTaFilters } from './lib/taScreenRules.js'
 import { getCarouselLimitForUser } from './utils/planAccess.js'
 
@@ -398,56 +399,42 @@ async function loadMaster() {
     const wantClientFilter = hasActiveTaFilters(taFilters)
 
     if (needsClientSideMasterFilter(taFilters, '', { scopedSearch: scoped })) {
-      clearMasterBarCache()
       const fullMarket = wantClientFilter && !scoped
-      // 全市場掃描時先依成交量排序，讓有量權證較早被分析
-      const scanFilters = fullMarket
-        ? { ...filters, sort: 'volume', sortDir: 'desc' }
-        : filters
-      statusText.value = fullMarket ? '載入全市場權證…' : '載入搜尋結果…'
-      const allRows = await fetchAllMasterRows(
-        scanFilters,
-        numOrUndef,
-        {
-          onProgress: ({ loaded, total }) => {
-            statusText.value = fullMarket
-              ? `載入全市場 ${loaded.toLocaleString()} / ${total.toLocaleString()}…`
-              : `載入搜尋結果 ${loaded.toLocaleString()} / ${total.toLocaleString()}…`
-          },
-        },
-      )
-      const concurrency = allRows.length > 2000 ? 28 : allRows.length > 400 ? 20 : 14
-      statusText.value = fullMarket
-        ? `全市場技術分析 0 / ${allRows.length.toLocaleString()}…`
-        : `技術分析篩選中… 0 / ${allRows.length.toLocaleString()}`
+      statusText.value = fullMarket ? '後端全市場技術掃描中…' : '後端技術面篩選中…'
+      const sortKey = filters.sort === 'grade' ? 'volume' : (filters.sort || 'volume')
+      const data = await fetchTaScreen({
+        q: filters.q || undefined,
+        market: filters.market,
+        type: filters.type || undefined,
+        expiryFrom: filters.expiryFrom || undefined,
+        expiryTo: filters.expiryTo || undefined,
+        closeMin: numOrUndef(filters.closeMin),
+        closeMax: numOrUndef(filters.closeMax),
+        exerciseMin: numOrUndef(filters.exerciseMin),
+        exerciseMax: numOrUndef(filters.exerciseMax),
+        ratioMin: numOrUndef(filters.ratioMin),
+        ratioMax: numOrUndef(filters.ratioMax),
+        volumeMin: numOrUndef(filters.volumeMin),
+        volumeMax: numOrUndef(filters.volumeMax),
+        daysMin: numOrUndef(filters.daysMin),
+        daysMax: numOrUndef(filters.daysMax),
+        sort: sortKey,
+        sortDir: filters.sortDir || 'desc',
+        page: 1,
+        pageSize: 5000,
+        ma5gtMa10: taFilters.ma5gtMa10 ? 1 : undefined,
+        heikinFirstRed: taFilters.heikinFirstRed ? 1 : undefined,
+        reversalFirstRed: taFilters.reversalFirstRed ? 1 : undefined,
+      })
+      const rows = applyMasterSort(data.data || [])
+      taFilteredRows.value = rows
+      masterTotal.value = Number(data.total) || rows.length
       clientFilterActive.value = true
-      taFilteredRows.value = []
-      masterTotal.value = 0
-      masterRows.value = []
-      let lastUi = 0
-      const liveMatches = []
-      const filtered = applyMasterSort(await filterMasterRowsClient(allRows, {
-        taFilters,
-        gradeFilter: '',
-        concurrency,
-        onMatch: (row) => {
-          liveMatches.push(row)
-          const now = Date.now()
-          if (now - lastUi < 1000) return
-          lastUi = now
-          taFilteredRows.value = applyMasterSort([...liveMatches])
-          masterTotal.value = liveMatches.length
-          paginateClientFilteredRows(1)
-        },
-        onProgress: ({ done, total, matched }) => {
-          const label = fullMarket ? '全市場技術分析' : '技術分析篩選'
-          statusText.value = `${label} ${done.toLocaleString()} / ${total.toLocaleString()}… 符合 ${Number(matched || 0).toLocaleString()} 檔`
-        },
-      }))
-      taFilteredRows.value = filtered
-      masterTotal.value = filtered.length
       const page = Math.max(1, filters.page)
       paginateClientFilteredRows(page)
+      const sec = data.elapsedMs != null ? ` · ${(Number(data.elapsedMs) / 1000).toFixed(1)}s` : ''
+      const scopeLabel = fullMarket ? '全市場' : '條件範圍'
+      statusText.value = `${scopeLabel}技術篩選完成：符合 ${masterTotal.value.toLocaleString()} 檔（候選 ${Number(data.candidates || 0).toLocaleString()}）${sec}`
       return
     }
 
@@ -964,7 +951,7 @@ onUnmounted(() => {
           <span class="ta-period-badge">日線</span>
           <h3>技術分析</h3>
         </div>
-        <p class="ta-hint muted">權證日線篩選；可掃<strong>全市場</strong>（未填標的時）。勾選條件後按「搜尋權證」，掃描需較長時間。</p>
+        <p class="ta-hint muted">權證日線篩選；可掃<strong>全市場</strong>（未填標的時）。後端批次掃描，通常數十秒內完成。</p>
         <div class="ta-chip-row">
           <button
             type="button"
