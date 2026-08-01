@@ -18,7 +18,7 @@ export const WARRANT_GRADE_MATRIX = {
     volume: '達標（量能充足）',
     ratio: '達標（理想區間）',
     expiry: '剩餘 30～180 日',
-    technical: '至少 1 項成立（小不點／神奇K／5均>10均／多空趨勢線）',
+    technical: '至少 1 項成立（小不點／神奇K／5均>10均）',
   },
   B: {
     label: 'B',
@@ -61,7 +61,6 @@ const TA_LABELS = {
   reversalFirstRed: '小不點第一根紅',
   heikinFirstRed: '神奇K線第一根紅',
   ma5gtMa10: '5均>10均',
-  duoKongTrendFirstRed: '多空趨勢線第一根紅',
 }
 
 function num(v) {
@@ -103,7 +102,6 @@ export function countTaSignals(signals) {
     signals.reversalFirstRed,
     signals.heikinFirstRed,
     signals.ma5gtMa10,
-    signals.duoKongTrendFirstRed,
   ].filter(Boolean).length
 }
 

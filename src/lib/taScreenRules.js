@@ -1,5 +1,4 @@
-import { calcSMA, calcDuoKongTrend, mapBars } from './indicators'
-import { DEFAULT_DUO_KONG_TREND_PERIOD } from './chartTheme'
+import { calcSMA, mapBars } from './indicators'
 
 /** 對齊主站 StockChartECharts 動態轉折（小不點）預設參數 */
 export const DEFAULT_GOLDEN_WAVE_PARAMS = {
@@ -144,17 +143,6 @@ export function isHeikinFirstRed(bars) {
   return isHeikinBarRed(ha[i]) && !isHeikinBarRed(ha[i - 1])
 }
 
-/** 多空趨勢線：斜率剛轉為上漲（第一根紅段） */
-export function isDuoKongTrendFirstRed(closes, period = DEFAULT_DUO_KONG_TREND_PERIOD) {
-  const { base } = calcDuoKongTrend(closes, period)
-  const i = base.length - 1
-  if (i < 2) return false
-  const risingNow = base[i] != null && base[i - 1] != null && base[i] > base[i - 1]
-  const risingPrev =
-    base[i - 1] != null && base[i - 2] != null && base[i - 1] > base[i - 2]
-  return risingNow && !risingPrev
-}
-
 /** 5 均線 > 10 均線（最新 bar） */
 export function isMa5AboveMa10(closes) {
   if (!closes?.length) return false
@@ -175,7 +163,6 @@ export function evaluateTaSignals(bars) {
     reversalFirstRed: isGoldenWaveFirstRed(closes, gwParams),
     heikinFirstRed: isHeikinFirstRed(ohlcBars),
     ma5gtMa10: isMa5AboveMa10(closes),
-    duoKongTrendFirstRed: isDuoKongTrendFirstRed(closes),
   }
 }
 
@@ -184,7 +171,6 @@ export function passesTaFilters(signals, taFilters) {
   if (taFilters.reversalFirstRed && !signals.reversalFirstRed) return false
   if (taFilters.heikinFirstRed && !signals.heikinFirstRed) return false
   if (taFilters.ma5gtMa10 && !signals.ma5gtMa10) return false
-  if (taFilters.duoKongTrendFirstRed && !signals.duoKongTrendFirstRed) return false
   return true
 }
 
@@ -193,6 +179,5 @@ export function hasActiveTaFilters(taFilters) {
     taFilters?.reversalFirstRed
     || taFilters?.heikinFirstRed
     || taFilters?.ma5gtMa10
-    || taFilters?.duoKongTrendFirstRed
   )
 }

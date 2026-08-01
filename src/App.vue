@@ -141,7 +141,6 @@ const taFilters = reactive({
   reversalFirstRed: false,
   heikinFirstRed: false,
   ma5gtMa10: false,
-  duoKongTrendFirstRed: false,
 })
 
 const masterRows = ref([])
@@ -330,7 +329,6 @@ const masterSearchSummary = computed(() => {
   if (taFilters.reversalFirstRed) ta.push('小不點第一根紅')
   if (taFilters.heikinFirstRed) ta.push('神奇K線第一根紅')
   if (taFilters.ma5gtMa10) ta.push('5均>10均')
-  if (taFilters.duoKongTrendFirstRed) ta.push('多空趨勢線第一根紅')
   if (ta.length) parts.push(ta.join('＋'))
   if (ta.length) parts.unshift('日線')
   return parts.length ? parts.join(' · ') : '全部未到期主檔'
@@ -693,7 +691,6 @@ function clearTaFilters() {
   taFilters.reversalFirstRed = false
   taFilters.heikinFirstRed = false
   taFilters.ma5gtMa10 = false
-  taFilters.duoKongTrendFirstRed = false
   filters.page = 1
   if (showMasterResults.value) loadMaster()
 }
@@ -902,15 +899,6 @@ onUnmounted(() => {
             :class="{ active: taFilters.ma5gtMa10 }"
             @click="toggleTaFilter('ma5gtMa10')"
           >5均 &gt; 10均</button>
-          <button
-            type="button"
-            class="chip-btn chip-btn--duokong"
-            :class="{ active: taFilters.duoKongTrendFirstRed }"
-            @click="toggleTaFilter('duoKongTrendFirstRed')"
-          >
-            <span class="chip-line-desktop">多空趨勢線第一根紅</span>
-            <span class="chip-line-mobile">多空趨勢線<br>第一根紅</span>
-          </button>
         </div>
       </div>
 
@@ -1593,7 +1581,6 @@ onUnmounted(() => {
   border-color: rgba(0, 212, 255, 0.45);
   background: rgba(0, 212, 255, 0.1);
 }
-.chip-line-mobile { display: none; }
 .chip-clear {
   border: 0;
   background: transparent;
@@ -1774,19 +1761,6 @@ onUnmounted(() => {
     flex-wrap: wrap;
     overflow-x: visible;
     padding-bottom: 0;
-  }
-  .ta-chip-row .chip-btn--duokong {
-    white-space: normal;
-    line-height: 1.2;
-    text-align: center;
-    border-radius: 12px;
-    padding: 0.32rem 0.55rem;
-  }
-  .ta-chip-row .chip-btn--duokong .chip-line-desktop {
-    display: none;
-  }
-  .ta-chip-row .chip-btn--duokong .chip-line-mobile {
-    display: inline;
   }
   .search-bar {
     padding: 0.75rem 0.65rem 0.85rem;
