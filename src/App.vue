@@ -20,6 +20,7 @@ import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { filterMasterRowsClient, enrichMasterRowsWithGrades, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
 import { hasActiveTaFilters } from './lib/taScreenRules.js'
 import { WARRANT_GRADE_MATRIX, GRADE_DIMENSIONS, gradeApiPrefilters } from './lib/warrantGrade.js'
+import { getCarouselLimitForUser } from './utils/planAccess.js'
 
 const {
   isAuthenticated,
@@ -936,8 +937,8 @@ onUnmounted(() => {
 
       <div class="fund-block ta-block">
         <div class="fund-head ta-head">
-          <h3>技術分析</h3>
           <span class="ta-period-badge">日線</span>
+          <h3>技術分析</h3>
         </div>
         <p class="ta-hint muted">權證日線篩選；評等／技術面僅針對<strong>目前搜尋結果</strong>，請先輸入標的或條件。</p>
         <div class="grade-filter-row">
@@ -1637,6 +1638,9 @@ onUnmounted(() => {
   gap: 0.45rem;
 }
 .ta-period-badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -1921,6 +1925,27 @@ onUnmounted(() => {
   }
   .heat-row--controls .chip-btns {
     width: 100%;
+  }
+  .ta-head {
+    flex: 1 1 100%;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .ta-period-badge {
+    order: -1;
+  }
+  .ta-chip-row {
+    flex: 1 1 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    padding-bottom: 0.15rem;
+  }
+  .ta-chip-row::-webkit-scrollbar {
+    display: none;
   }
 }
 .results-nav {

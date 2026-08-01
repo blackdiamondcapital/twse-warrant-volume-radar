@@ -12066,6 +12066,9 @@ onUnmounted(() => {
       >
         <!-- 手機版：顯示根數與週期按鈕包裝在一起 -->
         <div class="mobile-period-row">
+          <div v-if="isWarrantRadar" class="period-chips-scroll warrant-period-chip-wrap">
+            <span class="period-chip active warrant-period-chip">日線</span>
+          </div>
           <div class="visible-count-stepper">
             <button class="stepper-btn" type="button" @click="decrementKCount" title="減少根數">－</button>
             <input
@@ -12092,9 +12095,6 @@ onUnmounted(() => {
               class="warrant-latest-quote-bar__pct"
               :class="warrantLatestQuoteDisplay.pctUp ? 'is-up' : 'is-down'"
             >{{ warrantLatestQuoteDisplay.pctStr }}</span>
-          </div>
-          <div v-if="isWarrantRadar" class="period-chips-scroll warrant-period-chip-wrap">
-            <span class="period-chip active warrant-period-chip">日線</span>
           </div>
           <div v-if="!isWarrantRadar" class="period-chips-scroll">
             <button
@@ -14780,6 +14780,7 @@ onUnmounted(() => {
 
 .warrant-period-chip-wrap {
   flex: 0 0 auto;
+  order: -1;
 }
 .warrant-period-chip {
   cursor: default;
@@ -14787,6 +14788,8 @@ onUnmounted(() => {
   min-width: auto;
   padding: 8px 16px;
   font-size: 0.82rem;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
 }
 .warrant-period-chip:hover {
   transform: none;
