@@ -48,10 +48,10 @@ const columns = computed(() => {
   )
   base.push(
     { key: 'close', label: '收盤', align: 'num' },
-    { key: 'volume', label: '成交量', align: 'num' },
-    { key: 'exercise', label: '履約價', align: 'num' },
-    { key: 'days', label: '剩餘天數', align: 'num' },
-    { key: 'expiry', label: '到期日' },
+    { key: 'volume', label: '成交量', shortLabel: '量', align: 'num' },
+    { key: 'exercise', label: '履約價', shortLabel: '履約', align: 'num' },
+    { key: 'days', label: '剩餘天數', shortLabel: '天數', align: 'num' },
+    { key: 'expiry', label: '到期日', shortLabel: '到期' },
   )
   return base
 })
@@ -82,7 +82,7 @@ function fmtExpiryShort(date) {
   if (!date) return '—'
   const m = String(date).match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (!m) return date
-  return `${m[2]}/${m[3]}`
+  return `${Number(m[2])}/${Number(m[3])}`
 }
 
 function daysClass(days) {
@@ -140,7 +140,8 @@ function gradeClass(grade) {
                 :key="col.key"
                 :class="[col.align, col.key === 'expiry' ? 'cell-expiry' : '']"
               >
-                {{ col.label }}
+                <span class="col-label-full">{{ col.label }}</span>
+                <span class="col-label-short">{{ col.shortLabel || col.label }}</span>
               </th>
             </tr>
           </thead>
@@ -175,7 +176,7 @@ function gradeClass(grade) {
               <td class="num mono" :class="daysClass(row.days_to_expiry)">
                 {{ row.days_to_expiry == null ? '—' : row.days_to_expiry }}
               </td>
-              <td class="mono cell-expiry">
+              <td class="mono cell-expiry" :title="row.expiry_date || ''">
                 <span class="expiry-full">{{ row.expiry_date || '—' }}</span>
                 <span class="expiry-short">{{ fmtExpiryShort(row.expiry_date) }}</span>
               </td>
@@ -194,7 +195,8 @@ function gradeClass(grade) {
 </template>
 
 <style scoped>
-.screener { padding: 0.65rem 1.1rem 1.1rem; min-width: 0; }
+.screener { padding: 0.65rem 1.1rem 1.1rem; min-width: 0; overflow: hidden; }
+.col-label-short { display: none; }
 .table-wrap {
   width: 100%;
   max-width: 100%;
@@ -203,8 +205,10 @@ function gradeClass(grade) {
 }
 .screener table.data th.cell-expiry,
 .screener table.data td.cell-expiry {
-  padding-left: 0.4rem;
-  padding-right: 0.4rem;
+  width: 1%;
+  max-width: 3.25rem;
+  padding-left: 0.28rem;
+  padding-right: 0.28rem;
 }
 .expiry-short { display: none; }
 .head-row {
@@ -361,19 +365,23 @@ function gradeClass(grade) {
 }
 @media (max-width: 640px) {
   .screener {
-    padding-left: 0.55rem;
-    padding-right: 0.55rem;
+    padding-left: 0.45rem;
+    padding-right: 0.45rem;
   }
+  .col-label-full { display: none; }
+  .col-label-short { display: inline; }
   .screener table.data th,
   .screener table.data td {
-    padding: 0.42rem 0.32rem;
-    font-size: 0.78rem;
+    padding: 0.38rem 0.22rem;
+    font-size: 0.74rem;
   }
   .screener table.data th.cell-expiry,
   .screener table.data td.cell-expiry {
-    padding-left: 0.28rem;
-    padding-right: 0.28rem;
-    font-size: 0.74rem;
+    max-width: 2.35rem;
+    padding-left: 0.1rem;
+    padding-right: 0.1rem;
+    font-size: 0.62rem;
+    letter-spacing: -0.03em;
   }
   .expiry-full { display: none; }
   .expiry-short { display: inline; }

@@ -17,7 +17,7 @@ import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
 import { exportMasterToExcel, fetchAllMasterRows, fetchMasterRowsUpTo } from './utils/exportMasterExcel.js'
 import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
-import { filterMasterRowsClient, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
+import { filterMasterRowsClient, enrichMasterRowsWithGrades, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
 import { hasActiveTaFilters } from './lib/taScreenRules.js'
 import { WARRANT_GRADE_MATRIX, GRADE_DIMENSIONS, gradeApiPrefilters } from './lib/warrantGrade.js'
 
@@ -84,14 +84,84 @@ const filters = reactive({
 const gradeMatrix = WARRANT_GRADE_MATRIX
 const gradeDimensions = GRADE_DIMENSIONS.filter((d) => d.key === 'expiry' || d.key === 'technical')
 
-function sortRowsByGrade(rows) {
-  const order = { A: 0, B: 1, C: 2 }
+const MASTER_SORT_OPTIONS = [
+  { key: 'expiry', label: '到期日' },
+  { key: 'grade', label: '評等' },
+  { key: 'volume', label: '成交量' },
+  { key: 'days', label: '剩餘天數' },
+  { key: 'close', label: '收盤' },
+]
+
+function sortNum(v) {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+function applyMasterSort(rows) {
+  if (!rows?.length) return rows
+  const dir = filters.sortDir === 'desc' ? -1 : 1
+  const key = filters.sort
   return [...rows].sort((a, b) => {
-    const ga = order[a.warrant_grade] ?? 9
-    const gb = order[b.warrant_grade] ?? 9
-    if (ga !== gb) return ga - gb
-    return String(a.warrant_code || '').localeCompare(String(b.warrant_code || ''))
+    if (key === 'grade') {
+      const order = { A: 0, B: 1, C: 2 }
+      const ga = order[a.warrant_grade] ?? 9
+      const gb = order[b.warrant_grade] ?? 9
+      return (ga - gb) * dir
+    }
+    if (key === 'volume') {
+      return ((sortNum(a.volume) ?? -1) - (sortNum(b.volume) ?? -1)) * dir
+    }
+    if (key === 'days') {
+      return ((sortNum(a.days_to_expiry) ?? 99999) - (sortNum(b.days_to_expiry) ?? 99999)) * dir
+    }
+    if (key === 'close') {
+      return ((sortNum(a.close_price) ?? -1) - (sortNum(b.close_price) ?? -1)) * dir
+    }
+    return String(a.expiry_date || '').localeCompare(String(b.expiry_date || '')) * dir
   })
+}
+
+function setMasterSort(key) {
+  if (filters.sort === key) {
+    filters.sortDir = filters.sortDir === 'asc' ? 'desc' : 'asc'
+  } else {
+    filters.sort = key
+    filters.sortDir = key === 'grade' ? 'asc' : filters.sortDir
+  }
+  filters.page = 1
+  if (clientFilterActive.value) {
+    taFilteredRows.value = applyMasterSort(taFilteredRows.value)
+    paginateClientFilteredRows(1)
+    return
+  }
+  if (showMasterResults.value) loadMaster()
+}
+
+function sortDirLabel() {
+  return filters.sortDir === 'asc' ? '升冪 ↑' : '降冪 ↓'
+}
+
+async function enrichScopedSearchResults(scoped) {
+  if (!scoped || masterTotal.value <= 0) return false
+
+  const limit = Math.max(getCarouselLimitForUser(user.value, 'watchlist'), 2)
+  const cap = Math.min(masterTotal.value, limit)
+  let rowsForGrade = masterTotal.value <= filters.pageSize
+    ? [...masterRows.value]
+    : await fetchMasterRowsUpTo(filters, numOrUndef, cap)
+
+  statusText.value = `評等計算中… 0 / ${rowsForGrade.length}`
+  const graded = applyMasterSort(await enrichMasterRowsWithGrades(rowsForGrade, {
+    onProgress: ({ done, total }) => {
+      statusText.value = `評等計算 ${done} / ${total}…`
+    },
+  }))
+  taFilteredRows.value = graded
+  masterTotal.value = graded.length
+  clientFilterActive.value = true
+  paginateClientFilteredRows(Math.max(1, filters.page))
+  statusText.value = clientFilterStatusLabel(masterTotal.value, filters.page)
+  return true
 }
 
 const taFilters = reactive({
@@ -356,7 +426,7 @@ async function loadMaster() {
       statusText.value = gradeFilter.value
         ? `${gradeFilter.value} 級評分中… 0 / ${allRows.length}`
         : `技術分析篩選中… 0 / ${allRows.length}`
-      const filtered = sortRowsByGrade(await filterMasterRowsClient(allRows, {
+      const filtered = applyMasterSort(await filterMasterRowsClient(allRows, {
         taFilters,
         gradeFilter: gradeFilter.value,
         onProgress: ({ done, total }) => {
@@ -402,6 +472,9 @@ async function loadMaster() {
     })
     masterRows.value = data.data || []
     masterTotal.value = data.total || 0
+    if (scoped && !wantClientFilter && masterTotal.value > 0) {
+      if (await enrichScopedSearchResults(scoped)) return
+    }
     statusText.value = `主檔 ${data.total?.toLocaleString?.() || 0} 檔 · 顯示第 ${data.page} 頁`
   } catch (err) {
     console.error(err)
@@ -1074,7 +1147,24 @@ onUnmounted(() => {
 
         <p class="status muted">{{ statusText }}</p>
 
-        <div v-if="masterCarouselEnabled" class="carousel-bar panel">
+        <div v-if="masterTotal > 0" class="results-sort panel">
+          <span class="results-sort-label">排序</span>
+          <div class="results-sort-chips">
+            <button
+              v-for="opt in MASTER_SORT_OPTIONS"
+              :key="opt.key"
+              type="button"
+              class="chip-btn"
+              :class="{ active: filters.sort === opt.key }"
+              @click="setMasterSort(opt.key)"
+            >{{ opt.label }}</button>
+            <button type="button" class="chip-btn sort-dir-btn" @click="setMasterSort(filters.sort)">
+              {{ sortDirLabel() }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="masterCarouselEnabled" class="carousel-bar panel carousel-bar--mobile">
           <div class="carousel-bar-main">
             <span class="carousel-indicator">
               輪播 {{ carouselIndex + 1 }} / {{ masterCarouselRows.length }}
@@ -1709,6 +1799,9 @@ onUnmounted(() => {
   gap: 0.85rem;
   animation: rise 0.85s ease both;
 }
+.carousel-bar--mobile {
+  position: relative;
+}
 .carousel-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1716,6 +1809,30 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 0.65rem 1rem;
   padding: 0.75rem 1rem;
+}
+.results-sort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  padding: 0.65rem 0.85rem;
+}
+.results-sort-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.results-sort-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+}
+.sort-dir-btn {
+  color: var(--cyan-bright);
+  border-color: rgba(0, 212, 255, 0.35);
 }
 .carousel-bar-main {
   min-width: 0;
@@ -1765,8 +1882,26 @@ onUnmounted(() => {
     flex-direction: column;
     align-items: stretch;
   }
+  .carousel-bar--mobile {
+    position: sticky;
+    bottom: 0.35rem;
+    z-index: 30;
+    margin-bottom: 0.25rem;
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.35);
+  }
   .carousel-btns {
     justify-content: center;
+  }
+  .carousel-btn--chart,
+  .carousel-btn--start {
+    display: none;
+  }
+  .results-sort {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .results-sort-chips {
+    justify-content: flex-start;
   }
   .heat-head-row {
     flex-direction: column;

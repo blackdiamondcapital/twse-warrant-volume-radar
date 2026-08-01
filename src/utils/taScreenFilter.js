@@ -25,19 +25,40 @@ export function clearMasterBarCache() {
 }
 
 export function needsClientSideMasterFilter(taFilters, gradeFilter = '', { scopedSearch = false } = {}) {
+  if (!scopedSearch) return false
   if (hasActiveTaFilters(taFilters)) return true
-  if (gradeFilter && scopedSearch) return true
+  if (gradeFilter) return true
   return false
+}
+
+/** 搜尋結果逐檔計算 A/B/C（不篩掉列） */
+export async function enrichMasterRowsWithGrades(
+  rows,
+  { onProgress, concurrency = DEFAULT_CONCURRENCY } = {},
+) {
+  return filterMasterRowsClient(rows, {
+    taFilters: {},
+    gradeFilter: '',
+    gradeOnly: true,
+    onProgress,
+    concurrency,
+  })
 }
 
 /** 逐檔抓日線，套用技術分析／評等條件並計算評等 */
 export async function filterMasterRowsClient(
   rows,
-  { taFilters, gradeFilter = '', onProgress, concurrency = DEFAULT_CONCURRENCY } = {},
+  {
+    taFilters,
+    gradeFilter = '',
+    gradeOnly = false,
+    onProgress,
+    concurrency = DEFAULT_CONCURRENCY,
+  } = {},
 ) {
   const needTa = hasActiveTaFilters(taFilters)
   const needGrade = !!gradeFilter
-  if ((!needTa && !needGrade) || !rows?.length) return rows
+  if ((!needTa && !needGrade && !gradeOnly) || !rows?.length) return rows
 
   const list = [...rows]
   const matched = []
@@ -57,6 +78,7 @@ export async function filterMasterRowsClient(
       try {
         const bars = await fetchBarsForCode(code)
         if (!bars.length) {
+          if (gradeOnly) matched.push({ ...row })
           done += 1
           onProgress?.({ done, total: list.length })
           continue
@@ -78,7 +100,7 @@ export async function filterMasterRowsClient(
         }
         matched.push(enriched)
       } catch {
-        /* 略過無行情者 */
+        if (gradeOnly) matched.push({ ...row })
       }
       done += 1
       onProgress?.({ done, total: list.length })
