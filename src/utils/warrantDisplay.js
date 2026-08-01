@@ -22,3 +22,19 @@ export function isIndividualStockWarrant(row) {
   if (INDEX_UNDERLYING_PATTERN.test(name)) return false
   return /^\d{4}$/.test(code)
 }
+
+export function isUnexpiredWarrant(row) {
+  if (row?.days_to_expiry != null && row.days_to_expiry !== '') {
+    const days = Number(row.days_to_expiry)
+    return Number.isFinite(days) && days >= 0
+  }
+  if (row?.expiry_date) {
+    const t = Date.parse(String(row.expiry_date))
+    if (Number.isFinite(t)) {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      return t >= today.getTime()
+    }
+  }
+  return true
+}

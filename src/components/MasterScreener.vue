@@ -29,7 +29,7 @@ const countLabel = computed(() => {
   if (props.loading) return '載入中…'
   if (props.resultsMode && props.total === 0 && !props.loading) return '沒有符合條件'
   if (props.total > 0) return `符合 ${displayTotal.value.toLocaleString()} 檔`
-  if (props.statsTotal > 0 && !props.resultsMode) return `未到期 ${props.statsTotal.toLocaleString()} 檔`
+  if (props.statsTotal > 0 && !props.resultsMode) return `未到期權證 · 查詢後顯示`
   return '—'
 })
 
@@ -67,9 +67,9 @@ const canExportExcel = computed(() => {
 const exportBtnTitle = computed(() => {
   if (canExportExcel.value) {
     if (props.total > 0) {
-      return `匯出符合條件的個股權證代號（${props.total.toLocaleString()} 檔，不含評等）`
+      return `匯出未到期個股權證代號（${props.total.toLocaleString()} 檔，不含評等）`
     }
-    return `匯出個股權證代號（不含指數類，不含評等；依目前篩選）`
+    return `匯出未到期個股權證代號（排除指數類與已到期，不含評等）`
   }
   return '沒有可匯出的資料'
 })

@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx'
 import { fetchMasterSearch } from '../api'
-import { isIndividualStockWarrant, warrantTypeLabel } from './warrantDisplay'
+import { isIndividualStockWarrant, isUnexpiredWarrant, warrantTypeLabel } from './warrantDisplay'
+import { buildMasterSearchParams } from './masterSearchParams.js'
 import { downloadExcelFile } from './downloadExcel.js'
 import { enrichMasterRowsWithGrades } from './taScreenFilter.js'
 
@@ -14,27 +15,7 @@ function todayStamp() {
 }
 
 function buildSearchParams(filters, numOrUndef, page, pageSize) {
-  return {
-    q: filters.q || undefined,
-    market: filters.market,
-    type: filters.type || undefined,
-    expiryFrom: filters.expiryFrom || undefined,
-    expiryTo: filters.expiryTo || undefined,
-    closeMin: numOrUndef(filters.closeMin),
-    closeMax: numOrUndef(filters.closeMax),
-    exerciseMin: numOrUndef(filters.exerciseMin),
-    exerciseMax: numOrUndef(filters.exerciseMax),
-    ratioMin: numOrUndef(filters.ratioMin),
-    ratioMax: numOrUndef(filters.ratioMax),
-    volumeMin: numOrUndef(filters.volumeMin),
-    volumeMax: numOrUndef(filters.volumeMax),
-    daysMin: numOrUndef(filters.daysMin),
-    daysMax: numOrUndef(filters.daysMax),
-    sort: filters.sort === 'grade' ? 'expiry' : (filters.sort || 'expiry'),
-    sortDir: filters.sortDir || 'asc',
-    page,
-    pageSize,
-  }
+  return buildMasterSearchParams(filters, numOrUndef, { page, pageSize })
 }
 
 function rowToSheetRow(row) {
@@ -94,22 +75,41 @@ export async function exportRowsToExcel(rows, {
   return { count: sorted.length, method }
 }
 
-export async function fetchAllMasterRows(filters, numOrUndef, { onProgress } = {}) {
-  const pageSize = 1000
-  let page = 1
-  let total = Infinity
-  const allRows = []
+const EXPORT_PAGE_SIZE = 5000
+const EXPORT_FETCH_CONCURRENCY = 4
 
-  while (allRows.length < total) {
-    const data = await fetchMasterSearch(buildSearchParams(filters, numOrUndef, page, pageSize))
-    const rows = data.data || []
-    total = Number(data.total) || 0
-    allRows.push(...rows)
-    onProgress?.({ loaded: allRows.length, total })
-    if (!rows.length || allRows.length >= total) break
-    page += 1
+export async function fetchAllMasterRows(filters, numOrUndef, {
+  onProgress,
+  pageSize = EXPORT_PAGE_SIZE,
+  concurrency = EXPORT_FETCH_CONCURRENCY,
+  rowFilter,
+} = {}) {
+  const size = Math.max(100, Number(pageSize) || EXPORT_PAGE_SIZE)
+  const first = await fetchMasterSearch(buildSearchParams(filters, numOrUndef, 1, size))
+  const total = Number(first.total) || 0
+  const keep = (rows) => (typeof rowFilter === 'function' ? rows.filter(rowFilter) : rows)
+  const allRows = keep(first.data || [])
+  onProgress?.({ loaded: allRows.length, total })
+
+  const totalPages = Math.max(1, Math.ceil(total / size))
+  if (totalPages <= 1) return allRows
+
+  const pages = []
+  for (let page = 2; page <= totalPages; page += 1) pages.push(page)
+
+  let cursor = 0
+  async function worker() {
+    while (cursor < pages.length) {
+      const page = pages[cursor]
+      cursor += 1
+      const data = await fetchMasterSearch(buildSearchParams(filters, numOrUndef, page, size))
+      allRows.push(...keep(data.data || []))
+      onProgress?.({ loaded: allRows.length, total })
+    }
   }
 
+  const workers = Math.min(Math.max(1, Number(concurrency) || 1), pages.length)
+  await Promise.all(Array.from({ length: workers }, () => worker()))
   return allRows
 }
 
@@ -141,8 +141,17 @@ async function ensureRowsWithGrades(rows, onProgress) {
   })
 }
 
-function filterIndividualStockWarrants(rows) {
-  return rows.filter(isIndividualStockWarrant)
+function buildExportRowFilter({ individualStockOnly, unexpiredOnly }) {
+  return (row) => {
+    if (individualStockOnly && !isIndividualStockWarrant(row)) return false
+    if (unexpiredOnly && !isUnexpiredWarrant(row)) return false
+    return true
+  }
+}
+
+function applyExportRowFilters(rows, { individualStockOnly, unexpiredOnly }) {
+  const filter = buildExportRowFilter({ individualStockOnly, unexpiredOnly })
+  return rows.filter(filter)
 }
 
 export async function exportMasterToExcel(filters, numOrUndef, {
@@ -151,18 +160,19 @@ export async function exportMasterToExcel(filters, numOrUndef, {
   includeGrade = false,
   compact = true,
   individualStockOnly = true,
+  unexpiredOnly = true,
 } = {}) {
+  const rowFilter = buildExportRowFilter({ individualStockOnly, unexpiredOnly })
+
   let rows = presetRows?.length
-    ? presetRows
+    ? applyExportRowFilters(presetRows, { individualStockOnly, unexpiredOnly })
     : await fetchAllMasterRows(filters, numOrUndef, {
       onProgress: ({ loaded, total }) => onProgress?.({ phase: 'load', loaded, total }),
+      rowFilter,
     })
 
-  if (individualStockOnly) {
-    rows = filterIndividualStockWarrants(rows)
-  }
   if (!rows.length) {
-    throw new Error(individualStockOnly ? '沒有符合條件的個股權證可匯出' : '沒有符合條件的主檔可匯出')
+    throw new Error('沒有符合條件的未到期個股權證可匯出')
   }
 
   if (includeGrade) {
@@ -170,7 +180,7 @@ export async function exportMasterToExcel(filters, numOrUndef, {
   }
 
   return exportRowsToExcel(rows, {
-    filenamePrefix: compact ? '個股權證代號' : '權證主檔',
+    filenamePrefix: compact ? '個股權證代號_未到期' : '權證主檔_未到期',
     sheetName: compact ? '個股權證代號' : '發行主檔',
     compact,
   })

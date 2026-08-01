@@ -19,6 +19,8 @@ import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
 import { exportMasterToExcel, fetchMasterRowsUpTo } from './utils/exportMasterExcel.js'
 import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
+import { buildMasterSearchParams } from './utils/masterSearchParams.js'
+import { isUnexpiredWarrant } from './utils/warrantDisplay.js'
 import { enrichMasterRowsWithGrades, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
 import { hasActiveTaFilters } from './lib/taScreenRules.js'
 import { getCarouselLimitForUser } from './utils/planAccess.js'
@@ -373,6 +375,10 @@ function numOrUndef(v) {
   return Number.isFinite(n) ? n : undefined
 }
 
+function keepUnexpiredRows(rows) {
+  return (rows || []).filter(isUnexpiredWarrant)
+}
+
 function hasSearchScope() {
   return !!(
     filters.q?.trim()
@@ -403,30 +409,17 @@ async function loadMaster() {
       statusText.value = fullMarket ? '後端全市場技術掃描中…' : '後端技術面篩選中…'
       const sortKey = filters.sort === 'grade' ? 'volume' : (filters.sort || 'volume')
       const data = await fetchTaScreen({
-        q: filters.q || undefined,
-        market: filters.market,
-        type: filters.type || undefined,
-        expiryFrom: filters.expiryFrom || undefined,
-        expiryTo: filters.expiryTo || undefined,
-        closeMin: numOrUndef(filters.closeMin),
-        closeMax: numOrUndef(filters.closeMax),
-        exerciseMin: numOrUndef(filters.exerciseMin),
-        exerciseMax: numOrUndef(filters.exerciseMax),
-        ratioMin: numOrUndef(filters.ratioMin),
-        ratioMax: numOrUndef(filters.ratioMax),
-        volumeMin: numOrUndef(filters.volumeMin),
-        volumeMax: numOrUndef(filters.volumeMax),
-        daysMin: numOrUndef(filters.daysMin),
-        daysMax: numOrUndef(filters.daysMax),
-        sort: sortKey,
-        sortDir: filters.sortDir || 'desc',
-        page: 1,
-        pageSize: 5000,
+        ...buildMasterSearchParams(filters, numOrUndef, {
+          page: 1,
+          pageSize: 5000,
+          sort: sortKey,
+          sortDir: filters.sortDir || 'desc',
+        }),
         ma5gtMa10: taFilters.ma5gtMa10 ? 1 : undefined,
         heikinFirstRed: taFilters.heikinFirstRed ? 1 : undefined,
         reversalFirstRed: taFilters.reversalFirstRed ? 1 : undefined,
       })
-      const rows = applyMasterSort(data.data || [])
+      const rows = applyMasterSort(keepUnexpiredRows(data.data || []))
       taFilteredRows.value = rows
       masterTotal.value = Number(data.total) || rows.length
       clientFilterActive.value = true
@@ -440,33 +433,18 @@ async function loadMaster() {
 
     taFilteredRows.value = []
     clientFilterActive.value = false
-    const data = await fetchMasterSearch({
-      q: filters.q || undefined,
-      market: filters.market,
-      type: filters.type || undefined,
-      expiryFrom: filters.expiryFrom || undefined,
-      expiryTo: filters.expiryTo || undefined,
-      closeMin: numOrUndef(filters.closeMin),
-      closeMax: numOrUndef(filters.closeMax),
-      exerciseMin: numOrUndef(filters.exerciseMin),
-      exerciseMax: numOrUndef(filters.exerciseMax),
-      ratioMin: numOrUndef(filters.ratioMin),
-      ratioMax: numOrUndef(filters.ratioMax),
-      volumeMin: numOrUndef(filters.volumeMin),
-      volumeMax: numOrUndef(filters.volumeMax),
-      daysMin: numOrUndef(filters.daysMin),
-      daysMax: numOrUndef(filters.daysMax),
-      sort: filters.sort === 'grade' ? 'expiry' : filters.sort,
-      sortDir: filters.sortDir,
+    const data = await fetchMasterSearch(buildMasterSearchParams(filters, numOrUndef, {
       page: filters.page,
       pageSize: filters.pageSize,
-    })
-    masterRows.value = data.data || []
+      sort: filters.sort,
+      sortDir: filters.sortDir,
+    }))
+    masterRows.value = keepUnexpiredRows(data.data || [])
     masterTotal.value = data.total || 0
     if (scoped && !wantClientFilter && masterTotal.value > 0) {
       if (await enrichScopedSearchResults(scoped)) return
     }
-    statusText.value = `主檔 ${data.total?.toLocaleString?.() || 0} 檔 · 顯示第 ${data.page} 頁`
+    statusText.value = `未到期主檔 ${data.total?.toLocaleString?.() || 0} 檔 · 顯示第 ${data.page} 頁`
   } catch (err) {
     console.error(err)
     masterRows.value = []
@@ -696,9 +674,10 @@ async function onExportMaster() {
       includeGrade: false,
       compact: true,
       individualStockOnly: true,
+      unexpiredOnly: true,
       onProgress: ({ phase, loaded, total }) => {
         if (phase === 'load') {
-          statusText.value = `匯出中… ${loaded.toLocaleString()} / ${total.toLocaleString()} 檔`
+          statusText.value = `匯出中…已載入 ${loaded.toLocaleString()} 檔未到期個股權證${total ? `（主檔約 ${total.toLocaleString()} 檔）` : ''}`
         }
       },
     })
@@ -881,7 +860,7 @@ onUnmounted(() => {
         </div>
         <p class="lede">從權證總覽篩選全市場標的，追蹤當日成交熱度，並以全螢幕技術分析檢視單檔走勢。</p>
         <p v-if="stats" class="hero-stats">
-          <span class="stat"><span class="label">主檔總數</span><strong>{{ stats.total_master?.toLocaleString?.() }}</strong></span>
+          <span class="stat"><span class="label">主檔歷史總數</span><strong>{{ stats.total_master?.toLocaleString?.() }}</strong></span>
           <span class="stat-sep" aria-hidden="true">·</span>
           <span class="stat"><span class="label">上市</span><strong>{{ stats.twse?.master_total?.toLocaleString?.() }}</strong></span>
           <span class="stat-sep" aria-hidden="true">·</span>
