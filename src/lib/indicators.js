@@ -1,6 +1,7 @@
 /** 權證技術指標純函式（UI 對外名稱：多空線／多空趨勢線） */
 
 function num(v) {
+  if (v == null || v === '') return null
   const n = Number(v)
   return Number.isFinite(n) ? n : null
 }
@@ -17,7 +18,7 @@ export function mapBars(series) {
       const volume = num(d.volume)
       return { time, open, high, low, close, volume }
     })
-    .filter((b) => b.time)
+    .filter((b) => b.time && [b.open, b.high, b.low, b.close].some((x) => x != null))
 }
 
 export function calcSMA(values, period) {

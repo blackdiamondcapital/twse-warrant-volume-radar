@@ -8,6 +8,7 @@ import {
   fetchRankings,
   importLatestWarrants,
 } from './api'
+import { fetchStockPriceHistory } from './services/api.js'
 import { buildOAuthStartUrl } from './lib/oauthStart'
 import { useAuth } from './lib/auth'
 import MasterScreener from './components/MasterScreener.vue'
@@ -601,6 +602,23 @@ async function selectWarrant(row, { openChart = true } = {}) {
         latest_close_price: detail.value.latest_close_price ?? row.close_price,
         days_to_expiry: detail.value.days_to_expiry ?? row.days_to_expiry,
         volume: detail.value.volume ?? row.volume,
+      }
+    }
+    // 主檔 API 常回 null 收盤價；改以日線最後一根有效 K 補齊
+    if (detail.value?.latest_close_price == null && detail.value?.close_price == null) {
+      try {
+        const hist = await fetchStockPriceHistory(row.warrant_code, '1D')
+        const last = hist.length ? hist[hist.length - 1] : null
+        if (last?.close != null) {
+          detail.value = {
+            ...detail.value,
+            close_price: last.close,
+            latest_close_price: last.close,
+            latest_trade_date: detail.value.latest_trade_date || last.time,
+          }
+        }
+      } catch {
+        /* ignore */
       }
     }
     await nextTick()

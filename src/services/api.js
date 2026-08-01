@@ -5,8 +5,15 @@
 import { fetchTimeseries, fetchMasterSearch } from '../api.js'
 
 function toNum(v) {
+  if (v == null || v === '') return null
   const n = Number(v)
   return Number.isFinite(n) ? n : null
+}
+
+/** 至少有一根 OHLC 可繪 K 線（排除後端 placeholder：有日期但 OHLC 全 null） */
+function barHasOhlc(row) {
+  if (!row?.time) return false
+  return [row.open, row.high, row.low, row.close].some((x) => x != null)
 }
 
 function toIsoDate(v) {
@@ -107,7 +114,9 @@ export async function fetchStockPriceHistory(symbol, period = '1D', opts = {}) {
   }
 
   const resp = await fetchTimeseries(params)
-  const rows = Array.isArray(resp?.data) ? resp.data.map(mapWarrantRow).filter((r) => r.time) : []
+  const rows = Array.isArray(resp?.data)
+    ? resp.data.map(mapWarrantRow).filter(barHasOhlc)
+    : []
   rows.sort((a, b) => String(a.time).localeCompare(String(b.time)))
   return aggregateBars(rows, period)
 }
