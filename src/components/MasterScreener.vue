@@ -40,7 +40,7 @@ const columns = computed(() => {
     { key: 'code', label: '代號' },
   ]
   if (props.showGrade) {
-    base.push({ key: 'grade', label: '評等／評分' })
+    base.push({ key: 'grade', label: '評等', align: 'num' })
   }
   base.push(
     { key: 'name', label: '名稱' },
@@ -48,6 +48,7 @@ const columns = computed(() => {
   )
   base.push(
     { key: 'close', label: '收盤', align: 'num' },
+    { key: 'volume', label: '成交量', align: 'num' },
     { key: 'exercise', label: '履約價', align: 'num' },
     { key: 'days', label: '剩餘天數', align: 'num' },
     { key: 'expiry', label: '到期日' },
@@ -77,23 +78,18 @@ function fmt(n, digits = 2) {
   return Number(n).toLocaleString(undefined, { maximumFractionDigits: digits })
 }
 
+function fmtExpiryShort(date) {
+  if (!date) return '—'
+  const m = String(date).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return date
+  return `${m[2]}/${m[3]}`
+}
+
 function daysClass(days) {
   if (days == null) return ''
   if (days <= 7) return 'days-urgent'
   if (days <= 30) return 'days-soon'
   return ''
-}
-
-function gradeTitle(row) {
-  const d = row?.grade_detail
-  if (!d) return ''
-  return `量 ${d.volume} · 比 ${d.ratio} · ${d.expiry} · 技術 ${d.technical}`
-}
-
-function gradeTagClass(ok, partial = false) {
-  if (ok) return 'g-tag g-tag--ok'
-  if (partial) return 'g-tag g-tag--partial'
-  return 'g-tag g-tag--miss'
 }
 
 function gradeClass(grade) {
@@ -142,7 +138,7 @@ function gradeClass(grade) {
               <th
                 v-for="col in columns"
                 :key="col.key"
-                :class="col.align"
+                :class="[col.align, col.key === 'expiry' ? 'cell-expiry' : '']"
               >
                 {{ col.label }}
               </th>
@@ -156,21 +152,12 @@ function gradeClass(grade) {
               @click="emit('select', row)"
             >
               <td class="mono">{{ row.warrant_code }}</td>
-              <td v-if="showGrade" class="grade-cell">
-                <div class="grade-stack">
-                  <span
-                    v-if="row.warrant_grade"
-                    :class="gradeClass(row.warrant_grade)"
-                    :title="gradeTitle(row)"
-                  >{{ row.warrant_grade }}</span>
-                  <span v-else class="grade-badge grade-badge--none">—</span>
-                  <div v-if="row.grade_detail" class="grade-tags" :title="gradeTitle(row)">
-                    <span :class="gradeTagClass(row.grade_detail.volumeAOk)">量</span>
-                    <span :class="gradeTagClass(row.grade_detail.ratioOk)">比</span>
-                    <span :class="gradeTagClass(row.grade_detail.expiryAOk, row.grade_detail.expiryOk && !row.grade_detail.expiryAOk)">日</span>
-                    <span :class="gradeTagClass(row.grade_detail.technicalOk)">技</span>
-                  </div>
-                </div>
+              <td v-if="showGrade" class="num grade-cell">
+                <span
+                  v-if="row.warrant_grade"
+                  :class="gradeClass(row.warrant_grade)"
+                >{{ row.warrant_grade }}</span>
+                <span v-else class="grade-badge grade-badge--none">—</span>
               </td>
               <td>{{ row.warrant_name }}</td>
               <td class="underlying">
@@ -183,11 +170,15 @@ function gradeClass(grade) {
                 <span class="underlying-name">{{ row.underlying_name || '—' }}</span>
               </td>
               <td class="num mono">{{ fmt(row.close_price, 2) }}</td>
+              <td class="num mono">{{ fmt(row.volume, 0) }}</td>
               <td class="num mono">{{ fmt(row.latest_exercise_price) }}</td>
               <td class="num mono" :class="daysClass(row.days_to_expiry)">
                 {{ row.days_to_expiry == null ? '—' : row.days_to_expiry }}
               </td>
-              <td class="mono">{{ row.expiry_date || '—' }}</td>
+              <td class="mono cell-expiry">
+                <span class="expiry-full">{{ row.expiry_date || '—' }}</span>
+                <span class="expiry-short">{{ fmtExpiryShort(row.expiry_date) }}</span>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -203,7 +194,19 @@ function gradeClass(grade) {
 </template>
 
 <style scoped>
-.screener { padding: 0.65rem 1.1rem 1.1rem; }
+.screener { padding: 0.65rem 1.1rem 1.1rem; min-width: 0; }
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.screener table.data th.cell-expiry,
+.screener table.data td.cell-expiry {
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+}
+.expiry-short { display: none; }
 .head-row {
   display: flex;
   align-items: center;
@@ -291,45 +294,7 @@ function gradeClass(grade) {
   margin-top: 0.85rem;
 }
 .grade-cell {
-  min-width: 5.5rem;
-}
-.grade-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.28rem;
-}
-.grade-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.22rem;
-}
-.g-tag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.35rem;
-  padding: 0.04rem 0.28rem;
-  border-radius: 4px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  line-height: 1.25;
-  border: 1px solid transparent;
-}
-.g-tag--ok {
-  color: #86efac;
-  background: rgba(34, 197, 94, 0.14);
-  border-color: rgba(34, 197, 94, 0.35);
-}
-.g-tag--partial {
-  color: #7dd3fc;
-  background: rgba(56, 189, 248, 0.12);
-  border-color: rgba(56, 189, 248, 0.32);
-}
-.g-tag--miss {
-  color: rgba(148, 163, 184, 0.75);
-  background: rgba(148, 163, 184, 0.08);
-  border-color: rgba(148, 163, 184, 0.2);
+  min-width: 2.5rem;
 }
 .grade-badge {
   display: inline-flex;
@@ -393,5 +358,24 @@ function gradeClass(grade) {
 }
 .screener table.data tbody tr.selected {
   background: rgba(0, 212, 255, 0.08);
+}
+@media (max-width: 640px) {
+  .screener {
+    padding-left: 0.55rem;
+    padding-right: 0.55rem;
+  }
+  .screener table.data th,
+  .screener table.data td {
+    padding: 0.42rem 0.32rem;
+    font-size: 0.78rem;
+  }
+  .screener table.data th.cell-expiry,
+  .screener table.data td.cell-expiry {
+    padding-left: 0.28rem;
+    padding-right: 0.28rem;
+    font-size: 0.74rem;
+  }
+  .expiry-full { display: none; }
+  .expiry-short { display: inline; }
 }
 </style>

@@ -24,8 +24,10 @@ export function clearMasterBarCache() {
   barCache.clear()
 }
 
-export function needsClientSideMasterFilter(taFilters, gradeFilter = '') {
-  return hasActiveTaFilters(taFilters) || !!gradeFilter
+export function needsClientSideMasterFilter(taFilters, gradeFilter = '', { scopedSearch = false } = {}) {
+  if (hasActiveTaFilters(taFilters)) return true
+  if (gradeFilter && scopedSearch) return true
+  return false
 }
 
 /** 逐檔抓日線，套用技術分析／評等條件並計算評等 */

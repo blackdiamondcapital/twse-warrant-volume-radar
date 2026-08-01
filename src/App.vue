@@ -314,19 +314,45 @@ function numOrUndef(v) {
   return Number.isFinite(n) ? n : undefined
 }
 
+/** 有縮小範圍時才做逐檔評等（不掃描全市場） */
+function hasSearchScope() {
+  return !!(
+    filters.q?.trim()
+    || filters.type
+    || filters.expiryFrom
+    || filters.expiryTo
+    || filters.closeMin
+    || filters.closeMax
+    || filters.exerciseMin
+    || filters.exerciseMax
+    || filters.ratioMin
+    || filters.ratioMax
+    || filters.volumeMin
+    || filters.volumeMax
+    || filters.daysMin
+    || filters.daysMax
+  )
+}
+
 async function loadMaster() {
   loadingMaster.value = true
   try {
-    if (needsClientSideMasterFilter(taFilters, gradeFilter.value)) {
-      const clientFilters = filtersForClientFetch()
+    const scoped = hasSearchScope()
+    const wantClientFilter = hasActiveTaFilters(taFilters) || gradeFilter.value
+
+    if (needsClientSideMasterFilter(taFilters, gradeFilter.value, { scopedSearch: scoped })) {
       statusText.value = gradeFilter.value
-        ? `主檔查詢中（${gradeFilter.value} 級選股）…`
-        : '主檔查詢中（含技術分析篩選）…'
-      const allRows = await fetchAllMasterRows(clientFilters, numOrUndef, {
-        onProgress: ({ loaded, total }) => {
-          statusText.value = `載入主檔 ${loaded.toLocaleString()} / ${total.toLocaleString()}…`
+        ? `搜尋結果評等中（${gradeFilter.value} 級）…`
+        : '搜尋結果技術分析中…'
+      const allRows = await fetchAllMasterRows(
+        gradeFilter.value ? filtersForClientFetch() : filters,
+        numOrUndef,
+        {
+          onProgress: ({ loaded, total }) => {
+            statusText.value = `載入搜尋結果 ${loaded.toLocaleString()} / ${total.toLocaleString()}…`
+          },
         },
-      })
+      )
       statusText.value = gradeFilter.value
         ? `${gradeFilter.value} 級評分中… 0 / ${allRows.length}`
         : `技術分析篩選中… 0 / ${allRows.length}`
@@ -345,6 +371,10 @@ async function loadMaster() {
       const page = Math.max(1, filters.page)
       paginateClientFilteredRows(page)
       return
+    }
+
+    if (wantClientFilter && !scoped) {
+      statusText.value = '請先輸入標的／關鍵字或篩選條件（評等僅針對搜尋結果，不掃全市場）'
     }
 
     taFilteredRows.value = []
@@ -680,7 +710,7 @@ function onPage(p) {
 
 async function onImportLatest() {
   if (!isAdmin.value) {
-    statusText.value = '同步最新成交僅限管理員'
+    statusText.value = '更新資料僅限管理員'
     return
   }
   importing.value = true
@@ -836,7 +866,7 @@ onUnmounted(() => {
           <h3>技術分析</h3>
           <span class="ta-period-badge">日線</span>
         </div>
-        <p class="ta-hint muted">權證日線篩選；小不點參數依資料長度自動調整。選「A/B/C 級選股」會逐檔計算評等（較慢）。</p>
+        <p class="ta-hint muted">權證日線篩選；評等／技術面僅針對<strong>目前搜尋結果</strong>，請先輸入標的或條件。</p>
         <div class="grade-filter-row">
           <span class="grade-filter-label">評等選股</span>
           <button
@@ -858,7 +888,7 @@ onUnmounted(() => {
             @click="setGradeFilter('C')"
           >C 級</button>
           <span v-if="gradeFilter" class="grade-filter-hint muted">
-            已選 {{ gradeFilter }} 級 · 搜尋後僅顯示該評等
+            已選 {{ gradeFilter }} 級 · 僅篩選搜尋結果
           </span>
           <button
             v-if="gradeFilter"
@@ -929,11 +959,12 @@ onUnmounted(() => {
           @click="clearTaFilters"
         >清除技術面</button>
         <button
-          v-if="isAdmin"
+          type="button"
+          class="btn-clear-sm"
           :disabled="importing"
           @click="onImportLatest"
         >
-          {{ importing ? '同步中…' : '同步最新成交' }}
+          {{ importing ? '更新中…' : '更新資料' }}
         </button>
       </div>
     </section>

@@ -38,7 +38,7 @@ function fmt(n, digits = 0) {
     <div v-if="subtitle" class="rank-meta muted">{{ subtitle }}</div>
     <div v-if="loading" class="empty muted">載入排行…</div>
     <div v-else-if="!rows.length" class="empty muted">
-      {{ errorText || (heatType ? `目前沒有符合「${heatType}」的成交熱度` : '尚無成交資料，請先同步最新成交') }}
+      {{ errorText || (heatType ? `目前沒有符合「${heatType}」的成交熱度` : '尚無成交資料，請先更新資料') }}
     </div>
     <div v-else class="table-wrap">
       <table class="data">
