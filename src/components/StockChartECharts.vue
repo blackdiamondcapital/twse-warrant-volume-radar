@@ -12149,8 +12149,8 @@ onUnmounted(() => {
         <!-- 手機全螢幕：K 線切換 | 股票查詢 | 圖示同一列；桌機用 display:contents 維持原 flex 子項 -->
         <div class="mobile-toolbar-secondary">
         <div class="kline-search-cluster">
-        <!-- K線模式：桌機三按鈕（原始／神奇／轉折）；手機／窄螢幕（isMobileUi）圖示下拉 -->
-        <div v-if="!isWarrantRadar" class="kline-mode-toggle">
+        <!-- K線模式：桌機三按鈕（原始／神奇／轉折）；手機／窄螢幕（isMobileUi）圖示下拉；權證雷達亦顯示 -->
+        <div class="kline-mode-toggle">
           <template v-if="!isMobileUi">
             <button
               type="button"
