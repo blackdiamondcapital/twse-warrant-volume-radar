@@ -62,7 +62,7 @@ export async function exportRowsToExcel(rows, filenamePrefix = '權證主檔') {
   }
   const sheet = XLSX.utils.json_to_sheet(rows.map(rowToSheetRow))
   const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, sheet, '發行主檔')
+  XLSX.utils.book_append_sheet(workbook, sheet, '權證總覽')
   const method = await downloadExcelFile(workbook, `${filenamePrefix}_${todayStamp()}.xlsx`)
   return { count: rows.length, method }
 }

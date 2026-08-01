@@ -24,7 +24,7 @@
   --shadow-glow: 0 0 24px rgba(0, 212, 255, 0.18);
   --chart-fs-bg: #0b1220;
 
-  font-family: 'Inter', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
+  font-family: 'Sora', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
   color: var(--text);
   background: var(--bg-deep);
   line-height: 1.45;

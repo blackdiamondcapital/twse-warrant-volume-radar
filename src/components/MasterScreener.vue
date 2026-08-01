@@ -103,12 +103,22 @@ function gradeClass(grade) {
 <template>
   <div class="screener panel" :class="{ 'screener--results': resultsMode }">
     <div class="head-row">
-      <button v-if="!resultsMode" type="button" class="head toggle" @click="emit('toggle')">
+      <button
+        v-if="!resultsMode"
+        type="button"
+        class="head toggle"
+        :aria-expanded="panelOpen"
+        :aria-label="panelOpen ? '收合權證總覽' : '展開權證總覽'"
+        @click="emit('toggle')"
+      >
         <div class="head-main">
-          <h2>發行主檔</h2>
+          <h2>權證總覽</h2>
           <span class="muted">{{ countLabel }}</span>
         </div>
-        <span class="chev" aria-hidden="true">{{ panelOpen ? '▾' : '▸' }}</span>
+        <span class="chev" aria-hidden="true">
+          <span class="chev-label">{{ panelOpen ? '收合' : '展開' }}</span>
+          <span class="chev-icon">{{ panelOpen ? '▾' : '▸' }}</span>
+        </span>
       </button>
       <div v-else class="head head-static">
         <div class="head-main">
@@ -303,9 +313,21 @@ function gradeClass(grade) {
   font-weight: 600;
 }
 .chev {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
   color: var(--text-dim);
-  font-size: 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 600;
   flex-shrink: 0;
+  white-space: nowrap;
+}
+.chev-label {
+  letter-spacing: 0.02em;
+}
+.chev-icon {
+  font-size: 0.9rem;
+  line-height: 1;
 }
 .empty {
   padding: 2.5rem 1rem;

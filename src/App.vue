@@ -862,13 +862,20 @@ onUnmounted(() => {
     <header class="hero">
       <div class="hero-copy">
         <div class="brand-row">
-          <img class="brand-mark" src="/favicon.svg" alt="QuantGems Warrant Radar" width="44" height="44" />
-          <div>
-            <p class="eyebrow">QuantGems · Warrant Radar</p>
-            <h1>權證雷達</h1>
+          <div class="brand-mark-wrap" aria-hidden="true">
+            <span class="brand-mark-ring"></span>
+            <span class="brand-mark-pulse"></span>
+            <img class="brand-mark" src="/favicon.svg" alt="" width="52" height="52" />
+          </div>
+          <div class="brand-text">
+            <div class="brand-title-row">
+              <span class="brand-name">QuantGems<sup class="tm-mark">®</sup></span>
+              <h1>權證雷達</h1>
+            </div>
+            <span class="brand-accent" aria-hidden="true"></span>
           </div>
         </div>
-        <p class="lede">篩選全市場發行主檔，追蹤當日成交熱度，並以全螢幕技術分析檢視單檔走勢。</p>
+        <p class="lede">從權證總覽篩選全市場標的，追蹤當日成交熱度，並以全螢幕技術分析檢視單檔走勢。</p>
         <p v-if="stats" class="hero-stats">
           <span class="stat"><span class="label">主檔總數</span><strong>{{ stats.total_master?.toLocaleString?.() }}</strong></span>
           <span class="stat-sep" aria-hidden="true">·</span>
@@ -965,8 +972,17 @@ onUnmounted(() => {
       </div>
 
       <div class="actions">
-        <button class="primary" :disabled="loadingMaster" @click="onSearch">
-          {{ loadingMaster ? '搜尋中…' : '搜尋主檔' }}
+        <button type="button" class="primary" :disabled="loadingMaster" @click="onSearch">
+          {{ loadingMaster ? '搜尋中…' : '搜尋權證' }}
+        </button>
+        <button
+          v-if="isAdmin"
+          type="button"
+          class="primary btn-update-data"
+          :disabled="importing"
+          @click="onImportLatest"
+        >
+          {{ importing ? '更新中…' : '更新資料' }}
         </button>
         <button type="button" class="btn-clear-sm" @click="clearFundamentalFilters">清除基本面條件</button>
         <button
@@ -974,14 +990,6 @@ onUnmounted(() => {
           class="btn-clear-sm"
           @click="clearTaFilters"
         >清除技術面</button>
-        <button
-          type="button"
-          class="btn-clear-sm"
-          :disabled="importing"
-          @click="onImportLatest"
-        >
-          {{ importing ? '更新中…' : '更新資料' }}
-        </button>
       </div>
     </section>
 
@@ -1006,12 +1014,21 @@ onUnmounted(() => {
 
     <section class="heat-section">
       <div class="heat-head-row panel">
-        <button type="button" class="heat-head toggle" @click="toggleHeatSection">
+        <button
+          type="button"
+          class="heat-head toggle"
+          :aria-expanded="heatSectionOpen"
+          :aria-label="heatSectionOpen ? '收合當日熱度' : '展開當日熱度'"
+          @click="toggleHeatSection"
+        >
           <div class="heat-head-main">
             <h2>當日熱度</h2>
             <span class="muted">{{ heatSummaryLabel }}</span>
           </div>
-          <span class="chev" aria-hidden="true">{{ heatSectionOpen ? '▾' : '▸' }}</span>
+          <span class="chev" aria-hidden="true">
+            <span class="chev-label">{{ heatSectionOpen ? '收合' : '展開' }}</span>
+            <span class="chev-icon">{{ heatSectionOpen ? '▾' : '▸' }}</span>
+          </span>
         </button>
         <button
           type="button"
@@ -1252,46 +1269,129 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: stretch;
   gap: 1.15rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.35rem;
+  padding: 0.35rem 0 0.15rem;
   animation: rise 0.7s ease both;
-}
-.eyebrow {
-  margin: 0 0 0.2rem;
-  color: var(--cyan-bright);
-  letter-spacing: 0.06em;
-  text-transform: none;
-  font-size: 0.78rem;
-  font-weight: 600;
 }
 .brand-row {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 1rem;
+}
+.brand-title-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+}
+.brand-name {
+  color: #7dd3fc;
+  font-family: 'Sora', 'Noto Sans TC', sans-serif;
+  font-size: clamp(1.45rem, 2.8vw, 1.85rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+.brand-name .tm-mark {
+  font-size: 0.58em;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin-left: 0.14em;
+  vertical-align: super;
+  line-height: 0;
+  color: rgba(125, 211, 252, 0.95);
+}
+.brand-mark-wrap {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+.brand-mark-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 16px;
+  padding: 1.5px;
+  background: conic-gradient(
+    from 160deg,
+    transparent 0%,
+    rgba(56, 189, 248, 0.8) 22%,
+    transparent 48%,
+    rgba(129, 140, 248, 0.55) 72%,
+    transparent 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0.9;
+  animation: brand-spin 9s linear infinite;
+  pointer-events: none;
+}
+.brand-mark-pulse {
+  position: absolute;
+  inset: 2px;
+  border-radius: 13px;
+  background: radial-gradient(circle at 50% 45%, rgba(0, 212, 255, 0.28), transparent 68%);
+  animation: brand-pulse 2.8s ease-in-out infinite;
+  pointer-events: none;
 }
 .brand-mark {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  box-shadow: 0 0 24px rgba(0, 212, 255, 0.35), 0 0 0 1px rgba(0, 212, 255, 0.25);
-  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  width: 52px;
+  height: 52px;
+  border-radius: 13px;
+  box-shadow:
+    0 0 0 1px rgba(0, 212, 255, 0.28),
+    0 8px 28px rgba(0, 0, 0, 0.35),
+    0 0 32px rgba(0, 212, 255, 0.28);
+}
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 .hero h1 {
   margin: 0;
-  font-family: inherit;
-  font-size: clamp(1.85rem, 3.6vw, 2.55rem);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  background: var(--brand-gradient);
+  font-family: 'Noto Sans TC', 'Sora', 'PingFang TC', sans-serif;
+  font-size: clamp(1.45rem, 2.8vw, 1.85rem);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1.05;
+  background: linear-gradient(115deg, #e0f2fe 0%, #38bdf8 38%, #67e8f9 62%, #818cf8 100%);
+  background-size: 160% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: rise 0.85s ease both;
+  filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.22));
+  animation: rise 0.85s ease both, brand-shine 7s ease-in-out infinite;
+}
+.brand-accent {
+  display: block;
+  width: 3.4rem;
+  height: 2px;
+  margin-top: 0.55rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #38bdf8, rgba(129, 140, 248, 0.15));
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.45);
+  animation: brand-accent-in 0.9s ease both 0.15s;
+  transform-origin: left center;
 }
 .lede {
-  margin: 0.7rem 0 0;
+  margin: 0.85rem 0 0;
   color: var(--text-dim);
-  max-width: 36rem;
-  font-size: 0.98rem;
+  max-width: 38rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
 }
 .hero-stats {
   display: flex;
@@ -1395,9 +1495,21 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 .heat-head .chev {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
   color: var(--text-dim);
-  font-size: 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 600;
   flex-shrink: 0;
+  white-space: nowrap;
+}
+.heat-head .chev-label {
+  letter-spacing: 0.02em;
+}
+.heat-head .chev-icon {
+  font-size: 0.9rem;
+  line-height: 1;
 }
 .export-btn {
   flex-shrink: 0;
@@ -1667,6 +1779,24 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.65rem;
 }
+.actions .primary {
+  min-height: 2.55rem;
+  padding: 0.55rem 1.15rem;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+.btn-update-data {
+  /* 與「搜尋權證」同尺寸；用次強調色區隔動作 */
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(129, 140, 248, 0.22));
+  color: #e0f2fe;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  box-shadow: 0 6px 16px rgba(56, 189, 248, 0.12);
+}
+.btn-update-data:hover:not(:disabled) {
+  border-color: rgba(56, 189, 248, 0.7);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.28), rgba(129, 140, 248, 0.3));
+  color: #fff;
+}
 .btn-clear-sm {
   font-size: 0.76rem;
   padding: 0.28rem 0.55rem;
@@ -1772,6 +1902,27 @@ onUnmounted(() => {
   font-weight: 650;
 }
 @media (max-width: 640px) {
+  .brand-row {
+    gap: 0.8rem;
+  }
+  .brand-mark-wrap {
+    width: 48px;
+    height: 48px;
+  }
+  .brand-mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+  }
+  .brand-mark-ring {
+    border-radius: 14px;
+  }
+  .brand-title-row {
+    gap: 0.35rem 0.5rem;
+  }
+  .hero h1 {
+    letter-spacing: 0.03em;
+  }
   .carousel-bar {
     flex-direction: column;
     align-items: stretch;
@@ -1920,6 +2071,21 @@ onUnmounted(() => {
 @keyframes rise {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes brand-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes brand-pulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.96); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+@keyframes brand-shine {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes brand-accent-in {
+  from { opacity: 0; transform: scaleX(0.35); }
+  to { opacity: 1; transform: scaleX(1); }
 }
 
 @media (max-width: 980px) {
