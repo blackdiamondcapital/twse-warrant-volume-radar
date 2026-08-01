@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { warrantTypeLabel, isPutWarrant } from '../utils/warrantDisplay.js'
+import { warrantTypeLabel, isPutWarrant, resolveDaysToExpiry } from '../utils/warrantDisplay.js'
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
@@ -86,7 +86,13 @@ function fmtExpiryShort(date) {
   return `${Number(m[2])}/${Number(m[3])}`
 }
 
-function daysClass(days) {
+function fmtDays(row) {
+  const days = resolveDaysToExpiry(row)
+  return days == null ? '—' : days
+}
+
+function daysClass(row) {
+  const days = resolveDaysToExpiry(row)
   if (days == null) return ''
   if (days <= 7) return 'days-urgent'
   if (days <= 30) return 'days-soon'
@@ -186,8 +192,8 @@ function gradeClass(grade) {
               <td class="num mono">{{ fmt(row.close_price, 2) }}</td>
               <td class="num mono">{{ fmt(row.volume, 0) }}</td>
               <td class="num mono">{{ fmt(row.latest_exercise_price) }}</td>
-              <td class="num mono cell-days" :class="daysClass(row.days_to_expiry)">
-                {{ row.days_to_expiry == null ? '—' : row.days_to_expiry }}
+              <td class="num mono cell-days" :class="daysClass(row)">
+                {{ fmtDays(row) }}
               </td>
               <td class="mono cell-expiry" :title="row.expiry_date || ''">
                 <span class="expiry-full">{{ row.expiry_date || '—' }}</span>

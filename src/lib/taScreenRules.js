@@ -12,24 +12,9 @@ export const DEFAULT_GOLDEN_WAVE_PARAMS = {
   boxPeriod: 78,
 }
 
-/** 權證日線資料較短（約 120 根）時使用，維持快慢均比例但縮短週期 */
-export const WARRANT_GOLDEN_WAVE_PARAMS = {
-  fastMa: 12,
-  slowMa: 40,
-  fastMa2: 50,
-  slowMa2: 55,
-  multiMa: 10,
-  waveMa2: 10,
-  waveMa3: 10,
-  boxPeriod: 45,
-}
-
-/** 依 K 線根數選擇小不點參數 */
-export function resolveGoldenWaveParams(barCount) {
-  const n = Number(barCount)
-  if (!Number.isFinite(n) || n <= 0) return DEFAULT_GOLDEN_WAVE_PARAMS
-  if (n >= 160) return DEFAULT_GOLDEN_WAVE_PARAMS
-  return WARRANT_GOLDEN_WAVE_PARAMS
+/** 依 K 線根數選擇小不點參數（固定使用主站預設 30 / 100） */
+export function resolveGoldenWaveParams(_barCount) {
+  return DEFAULT_GOLDEN_WAVE_PARAMS
 }
 
 function calcEMA(arr, period) {

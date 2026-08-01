@@ -1,6 +1,13 @@
 import * as XLSX from 'xlsx'
 import { fetchMasterSearch } from '../api'
-import { isIndividualStockWarrant, isUnexpiredWarrant, resolveDaysToExpiry, warrantTypeLabel } from './warrantDisplay'
+import {
+  isIndividualStockWarrant,
+  isUnexpiredWarrant,
+  normalizeWarrantExpiryFields,
+  resolveDaysToExpiry,
+  resolveExpiryDate,
+  warrantTypeLabel,
+} from './warrantDisplay.js'
 import { buildMasterSearchParams } from './masterSearchParams.js'
 import { downloadExcelFile } from './downloadExcel.js'
 import { enrichMasterRowsWithGrades } from './taScreenFilter.js'
@@ -23,31 +30,39 @@ function rowToSheetRow(row) {
 }
 
 export function rowToDetailSheetRow(row) {
+  const normalized = normalizeWarrantExpiryFields(row)
+  const days = resolveDaysToExpiry(normalized)
+  const expiry = resolveExpiryDate(normalized) ?? normalized.expiry_date ?? ''
   return {
-    權證代號: row.warrant_code ?? '',
-    權證名稱: row.warrant_name ?? '',
-    類型: warrantTypeLabel(row) ?? '',
-    標的代號: row.underlying_code ?? '',
-    標的名稱: row.underlying_name ?? '',
-    市場: row.market ?? '',
-    評等: row.warrant_grade ?? '',
-    收盤: row.close_price ?? '',
-    成交量: row.volume ?? '',
-    履約價: row.latest_exercise_price ?? '',
-    行使比例: row.latest_exercise_ratio ?? '',
-    剩餘天數: resolveDaysToExpiry(row) ?? '',
-    到期日: row.expiry_date ?? '',
-    發行量: row.issuance ?? '',
-    最近成交日: row.latest_trade_date ?? '',
+    權證代號: normalized.warrant_code ?? '',
+    權證名稱: normalized.warrant_name ?? '',
+    類型: warrantTypeLabel(normalized) ?? '',
+    標的代號: normalized.underlying_code ?? '',
+    標的名稱: normalized.underlying_name ?? '',
+    市場: normalized.market ?? '',
+    評等: normalized.warrant_grade ?? '',
+    收盤: normalized.close_price ?? '',
+    成交量: normalized.volume ?? '',
+    履約價: normalized.latest_exercise_price ?? '',
+    行使比例: normalized.latest_exercise_ratio ?? '',
+    剩餘天數: days ?? '',
+    到期日: expiry,
+    發行量: normalized.issuance ?? '',
+    最近成交日: normalized.latest_trade_date ?? '',
   }
 }
 
 function rowToCompactSheetRow(row) {
+  const normalized = normalizeWarrantExpiryFields(row)
+  const days = resolveDaysToExpiry(normalized)
+  const expiry = resolveExpiryDate(normalized) ?? normalized.expiry_date ?? ''
   return {
-    標的代號: row.underlying_code ?? '',
-    標的名稱: row.underlying_name ?? '',
-    權證代號: row.warrant_code ?? '',
-    類型: warrantTypeLabel(row) ?? '',
+    標的代號: normalized.underlying_code ?? '',
+    標的名稱: normalized.underlying_name ?? '',
+    權證代號: normalized.warrant_code ?? '',
+    類型: warrantTypeLabel(normalized) ?? '',
+    剩餘天數: days ?? '',
+    到期日: expiry,
   }
 }
 

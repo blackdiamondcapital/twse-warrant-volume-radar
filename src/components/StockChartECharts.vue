@@ -4132,8 +4132,7 @@ const goldenWaveParams = ref({
 })
 
 function goldenWaveDefaultParams() {
-  if (!isWarrantRadar.value) return DEFAULT_GOLDEN_WAVE_PARAMS
-  return resolveGoldenWaveParams(chartData.value?.length || 120)
+  return DEFAULT_GOLDEN_WAVE_PARAMS
 }
 
 function saveGoldenWaveParams() {

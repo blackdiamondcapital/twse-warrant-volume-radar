@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 import { fetchMasterDetail } from '../api'
-import { resolveDaysToExpiry } from './warrantDisplay.js'
+import { normalizeWarrantExpiryFields, resolveExpiryDate } from './warrantDisplay.js'
 import { rowToDetailSheetRow } from './exportMasterExcel.js'
 import { downloadExcelFile } from './downloadExcel.js'
 import { enrichMasterRowsWithGrades } from './taScreenFilter.js'
@@ -16,22 +16,30 @@ function todayStamp() {
   return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`
 }
 
+function extractMasterDetail(resp) {
+  if (!resp) return null
+  const nested = resp.data
+  if (nested && typeof nested === 'object' && (nested.warrant_code || nested.expiry_date != null)) {
+    return nested
+  }
+  if (resp.warrant_code || resp.expiry_date != null) return resp
+  return nested ?? null
+}
+
 function mergeMasterDetail(row, detail) {
   const d = detail || {}
-  const expiry = d.expiry_date || row.expiry_date || ''
-  const merged = {
+  const merged = normalizeWarrantExpiryFields({
     ...row,
     underlying_code: row.underlying_code ?? d.underlying_code ?? '',
     underlying_name: row.underlying_name ?? d.underlying_name ?? '',
     latest_exercise_price: d.latest_exercise_price ?? d.original_exercise_price ?? row.latest_exercise_price ?? '',
     latest_exercise_ratio: d.latest_exercise_ratio ?? row.latest_exercise_ratio ?? '',
-    expiry_date: expiry,
+    expiry_date: resolveExpiryDate(d) ?? resolveExpiryDate(row) ?? d.expiry_date ?? row.expiry_date ?? '',
     issuance: d.issuance_units_thousand ?? d.accumulated_issuance ?? d.issuance ?? row.issuance ?? '',
     latest_trade_date: row.trade_date ?? d.latest_trade_date ?? row.latest_trade_date ?? '',
     market: row.market ?? d.market ?? '',
     close_price: row.close_price ?? d.latest_close_price ?? d.close_price ?? '',
-  }
-  merged.days_to_expiry = resolveDaysToExpiry(merged)
+  })
   return merged
 }
 
@@ -54,7 +62,7 @@ async function enrichHeatRowsFromMaster(rows, { onProgress } = {}) {
       }
       try {
         const resp = await fetchMasterDetail(code)
-        out[idx] = mergeMasterDetail(row, resp?.data)
+        out[idx] = mergeMasterDetail(row, extractMasterDetail(resp))
       } catch {
         out[idx] = row
       }

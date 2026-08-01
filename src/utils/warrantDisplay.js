@@ -37,20 +37,56 @@ export function isUnexpiredWarrant(row) {
   return true
 }
 
+function parseExpiryDateParts(value) {
+  if (value == null || value === '') return null
+  const s = String(value).trim()
+  if (!s) return null
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) return [Number(m[1]), Number(m[2]), Number(m[3])]
+  m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/)
+  if (m) return [Number(m[1]), Number(m[2]), Number(m[3])]
+  const t = Date.parse(s)
+  if (Number.isFinite(t)) {
+    const d = new Date(t)
+    return [d.getFullYear(), d.getMonth() + 1, d.getDate()]
+  }
+  return null
+}
+
+/** 到期日：相容 expiry_date / expiryDate，回傳 YYYY-MM-DD 或 null */
+export function resolveExpiryDate(row) {
+  const raw = row?.expiry_date ?? row?.expiryDate ?? row?.end_date ?? ''
+  const parts = parseExpiryDateParts(raw)
+  if (!parts) return null
+  const [y, mo, d] = parts
+  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+
 /** 剩餘天數：優先用欄位，否則由到期日計算（避免 API 回 null） */
 export function resolveDaysToExpiry(row) {
-  const fromField = row?.days_to_expiry
+  const fromField = row?.days_to_expiry ?? row?.daysToExpiry
   if (fromField != null && fromField !== '') {
     const n = Number(fromField)
     if (Number.isFinite(n)) return n
   }
-  const exp = row?.expiry_date
-  if (!exp) return null
-  const m = String(exp).match(/^(\d{4})-(\d{2})-(\d{2})/)
-  if (!m) return null
-  const expiry = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  const parts = parseExpiryDateParts(resolveExpiryDate(row) ?? row?.expiry_date ?? row?.expiryDate ?? '')
+  if (!parts) return null
+  const [y, mo, d] = parts
+  const expiry = new Date(y, mo - 1, d)
   expiry.setHours(0, 0, 0, 0)
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return Math.round((expiry.getTime() - today.getTime()) / 86400000)
+}
+
+/** 匯出／合併前：正規化 expiry_date 與 days_to_expiry */
+export function normalizeWarrantExpiryFields(row) {
+  if (!row || typeof row !== 'object') return row
+  const expiry_date = resolveExpiryDate(row) ?? (row.expiry_date || '')
+  const days = resolveDaysToExpiry({ ...row, expiry_date })
+  return {
+    ...row,
+    expiry_date,
+    days_to_expiry: days ?? row.days_to_expiry ?? null,
+  }
 }
