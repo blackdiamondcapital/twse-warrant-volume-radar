@@ -1,4 +1,4 @@
-import { calcMACD, calcSMA, mapBars } from './indicators'
+import { calcSMA, mapBars } from './indicators'
 
 /** 對齊主站 StockChartECharts 動態轉折（小不點）預設參數 */
 export const DEFAULT_GOLDEN_WAVE_PARAMS = {
@@ -143,36 +143,6 @@ export function isHeikinFirstRed(bars) {
   return isHeikinBarRed(ha[i]) && !isHeikinBarRed(ha[i - 1])
 }
 
-/** MACD 柱 > 0（台股紅柱／偏多） */
-function isMacdHistRed(histVal) {
-  const h = Number(histVal)
-  return Number.isFinite(h) && h > 0
-}
-
-/** MACD 柱 < 0（台股綠柱／偏空） */
-function isMacdHistGreen(histVal) {
-  const h = Number(histVal)
-  return Number.isFinite(h) && h < 0
-}
-
-/** MACD 第一根紅柱：histogram 由 <=0 轉為 >0 */
-export function isMacdFirstRedBar(closes) {
-  if (!closes?.length) return false
-  const { hist } = calcMACD(closes)
-  const i = hist.length - 1
-  if (i < 1) return false
-  return isMacdHistRed(hist[i]) && !isMacdHistRed(hist[i - 1])
-}
-
-/** MACD 第一根綠柱：histogram 由 >=0 轉為 <0 */
-export function isMacdFirstGreenBar(closes) {
-  if (!closes?.length) return false
-  const { hist } = calcMACD(closes)
-  const i = hist.length - 1
-  if (i < 1) return false
-  return isMacdHistGreen(hist[i]) && !isMacdHistGreen(hist[i - 1])
-}
-
 /** 5 均線 > 10 均線（最新 bar） */
 export function isMa5AboveMa10(closes) {
   if (!closes?.length) return false
@@ -193,8 +163,6 @@ export function evaluateTaSignals(bars) {
     reversalFirstRed: isGoldenWaveFirstRed(closes, gwParams),
     heikinFirstRed: isHeikinFirstRed(ohlcBars),
     ma5gtMa10: isMa5AboveMa10(closes),
-    macdFirstRed: isMacdFirstRedBar(closes),
-    macdFirstGreen: isMacdFirstGreenBar(closes),
   }
 }
 
@@ -203,8 +171,6 @@ export function passesTaFilters(signals, taFilters) {
   if (taFilters.reversalFirstRed && !signals.reversalFirstRed) return false
   if (taFilters.heikinFirstRed && !signals.heikinFirstRed) return false
   if (taFilters.ma5gtMa10 && !signals.ma5gtMa10) return false
-  if (taFilters.macdFirstRed && !signals.macdFirstRed) return false
-  if (taFilters.macdFirstGreen && !signals.macdFirstGreen) return false
   return true
 }
 
@@ -213,7 +179,5 @@ export function hasActiveTaFilters(taFilters) {
     taFilters?.reversalFirstRed
     || taFilters?.heikinFirstRed
     || taFilters?.ma5gtMa10
-    || taFilters?.macdFirstRed
-    || taFilters?.macdFirstGreen
   )
 }
