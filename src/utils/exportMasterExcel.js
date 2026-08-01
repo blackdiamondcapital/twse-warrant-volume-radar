@@ -2,7 +2,6 @@ import * as XLSX from 'xlsx'
 import { fetchMasterSearch } from '../api'
 import { warrantTypeLabel } from './warrantDisplay'
 import { downloadExcelFile } from './downloadExcel.js'
-import { enrichMasterRowsWithGrades } from './taScreenFilter.js'
 
 function pad2(n) {
   return String(n).padStart(2, '0')
@@ -45,7 +44,6 @@ function rowToSheetRow(row) {
     標的代號: row.underlying_code ?? '',
     標的名稱: row.underlying_name ?? '',
     市場: row.market ?? '',
-    評等: row.warrant_grade ?? '',
     收盤: row.close_price ?? '',
     成交量: row.volume ?? '',
     履約價: row.latest_exercise_price ?? '',
@@ -106,20 +104,9 @@ export async function fetchMasterRowsUpTo(filters, numOrUndef, maxRows = 200) {
   return allRows.slice(0, cap)
 }
 
-async function ensureRowsWithGrades(rows, onProgress) {
-  if (!rows?.length || rows.every((row) => row.warrant_grade)) return rows
-  onProgress?.({ phase: 'grade', done: 0, total: rows.length })
-  return enrichMasterRowsWithGrades(rows, {
-    onProgress: ({ done, total }) => onProgress?.({ phase: 'grade', done, total }),
-  })
-}
-
 export async function exportMasterToExcel(filters, numOrUndef, { onProgress, rows: presetRows } = {}) {
-  let rows = presetRows?.length
+  const rows = presetRows?.length
     ? presetRows
-    : await fetchAllMasterRows(filters, numOrUndef, {
-      onProgress: ({ loaded, total }) => onProgress?.({ phase: 'load', loaded, total }),
-    })
-  rows = await ensureRowsWithGrades(rows, onProgress)
+    : await fetchAllMasterRows(filters, numOrUndef, { onProgress })
   return exportRowsToExcel(rows)
 }

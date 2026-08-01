@@ -17,9 +17,8 @@ import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
 import { exportMasterToExcel, fetchAllMasterRows, fetchMasterRowsUpTo } from './utils/exportMasterExcel.js'
 import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
-import { filterMasterRowsClient, enrichMasterRowsWithGrades, needsClientSideMasterFilter, clearMasterBarCache } from './utils/taScreenFilter.js'
+import { filterMasterRowsClient, needsClientSideMasterFilter, clearMasterBarCache } from './utils/taScreenFilter.js'
 import { hasActiveTaFilters } from './lib/taScreenRules.js'
-import { WARRANT_GRADE_MATRIX, GRADE_DIMENSIONS } from './lib/warrantGrade.js'
 import { getCarouselLimitForUser } from './utils/planAccess.js'
 
 const {
@@ -82,12 +81,8 @@ const filters = reactive({
   pageSize: 50,
 })
 
-const gradeMatrix = WARRANT_GRADE_MATRIX
-const gradeDimensions = GRADE_DIMENSIONS.filter((d) => d.key === 'expiry' || d.key === 'technical')
-
 const MASTER_SORT_OPTIONS = [
   { key: 'expiry', label: '到期日' },
-  { key: 'grade', label: '評等' },
   { key: 'volume', label: '成交量' },
   { key: 'exercise', label: '履約價' },
   { key: 'days', label: '剩餘天數' },
@@ -104,12 +99,6 @@ function applyMasterSort(rows) {
   const dir = filters.sortDir === 'desc' ? -1 : 1
   const key = filters.sort
   return [...rows].sort((a, b) => {
-    if (key === 'grade') {
-      const order = { A: 0, B: 1, C: 2 }
-      const ga = order[a.warrant_grade] ?? 9
-      const gb = order[b.warrant_grade] ?? 9
-      return (ga - gb) * dir
-    }
     if (key === 'volume') {
       return ((sortNum(a.volume) ?? -1) - (sortNum(b.volume) ?? -1)) * dir
     }
@@ -131,7 +120,6 @@ function setMasterSort(key) {
     filters.sortDir = filters.sortDir === 'asc' ? 'desc' : 'asc'
   } else {
     filters.sort = key
-    filters.sortDir = key === 'grade' ? 'asc' : filters.sortDir
   }
   filters.page = 1
   if (clientFilterActive.value) {
@@ -147,29 +135,6 @@ function setMasterSort(key) {
 
 function sortDirLabel() {
   return filters.sortDir === 'asc' ? '升冪 ↑' : '降冪 ↓'
-}
-
-async function enrichScopedSearchResults(scoped) {
-  if (!scoped || masterTotal.value <= 0) return false
-
-  const limit = Math.max(getCarouselLimitForUser(user.value, 'watchlist'), 2)
-  const cap = Math.min(masterTotal.value, limit)
-  let rowsForGrade = masterTotal.value <= filters.pageSize
-    ? [...masterRows.value]
-    : await fetchMasterRowsUpTo(filters, numOrUndef, cap)
-
-  statusText.value = `評等計算中… 0 / ${rowsForGrade.length}`
-  const graded = applyMasterSort(await enrichMasterRowsWithGrades(rowsForGrade, {
-    onProgress: ({ done, total }) => {
-      statusText.value = `評等計算 ${done} / ${total}…`
-    },
-  }))
-  taFilteredRows.value = graded
-  masterTotal.value = graded.length
-  clientFilterActive.value = true
-  paginateClientFilteredRows(Math.max(1, filters.page))
-  statusText.value = clientFilterStatusLabel(masterTotal.value, filters.page)
-  return true
 }
 
 const taFilters = reactive({
@@ -377,7 +342,7 @@ function numOrUndef(v) {
   return Number.isFinite(n) ? n : undefined
 }
 
-/** 有縮小範圍時才做逐檔評等（不掃描全市場） */
+/** 有縮小範圍時才做逐檔技術分析（不掃描全市場） */
 function hasSearchScope() {
   return !!(
     filters.q?.trim()
@@ -398,6 +363,7 @@ function hasSearchScope() {
 }
 
 async function loadMaster() {
+  if (filters.sort === 'grade') filters.sort = 'expiry'
   loadingMaster.value = true
   try {
     const scoped = hasSearchScope()
@@ -458,16 +424,13 @@ async function loadMaster() {
       volumeMax: numOrUndef(filters.volumeMax),
       daysMin: numOrUndef(filters.daysMin),
       daysMax: numOrUndef(filters.daysMax),
-      sort: filters.sort === 'grade' ? 'expiry' : filters.sort,
+      sort: filters.sort,
       sortDir: filters.sortDir,
       page: filters.page,
       pageSize: filters.pageSize,
     })
     masterRows.value = data.data || []
     masterTotal.value = data.total || 0
-    if (scoped && !wantClientFilter && masterTotal.value > 0) {
-      if (await enrichScopedSearchResults(scoped)) return
-    }
     statusText.value = `主檔 ${data.total?.toLocaleString?.() || 0} 檔 · 顯示第 ${data.page} 頁`
   } catch (err) {
     console.error(err)
@@ -678,12 +641,8 @@ async function onExportMaster() {
     }
     const { count, method } = await exportMasterToExcel(filters, numOrUndef, {
       rows: presetRows || undefined,
-      onProgress: ({ phase, loaded, total, done }) => {
-        if (phase === 'grade') {
-          statusText.value = `評等計算中… ${done.toLocaleString()} / ${total.toLocaleString()} 檔`
-        } else {
-          statusText.value = `匯出中… ${loaded.toLocaleString()} / ${total.toLocaleString()} 檔`
-        }
+      onProgress: ({ loaded, total }) => {
+        statusText.value = `匯出中… ${loaded.toLocaleString()} / ${total.toLocaleString()} 檔`
       },
     })
     statusText.value = excelDownloadStatus(method, count)
@@ -713,14 +672,7 @@ async function onExportHeat() {
   exportingHeat.value = true
   statusText.value = '正在準備 Excel…'
   try {
-    const { count, method } = await exportHeatToExcel(rankings.value, {
-      tradeDate: selectedDate.value,
-      onProgress: ({ phase, done, total }) => {
-        if (phase === 'grade') {
-          statusText.value = `評等計算中… ${done.toLocaleString()} / ${total.toLocaleString()} 檔`
-        }
-      },
-    })
+    const { count, method } = await exportHeatToExcel(rankings.value, { tradeDate: selectedDate.value })
     statusText.value = excelDownloadStatus(method, count)
   } catch (err) {
     if (err?.name === 'AbortError') {
@@ -960,29 +912,6 @@ onUnmounted(() => {
             <span class="chip-line-mobile">多空趨勢線<br>第一根紅</span>
           </button>
         </div>
-        <details class="grade-criteria">
-          <summary>A / B / C 評等標準（到期日 · 技術面；量能／行使比納入評分但不顯示數值）</summary>
-          <div class="grade-matrix-wrap">
-            <table class="grade-matrix">
-              <thead>
-                <tr>
-                  <th>項目</th>
-                  <th>A 級</th>
-                  <th>B 級</th>
-                  <th>C 級</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="dim in gradeDimensions" :key="dim.key">
-                  <th>{{ dim.label }}</th>
-                  <td>{{ gradeMatrix.A[dim.key] }}</td>
-                  <td>{{ gradeMatrix.B[dim.key] }}</td>
-                  <td>{{ gradeMatrix.C[dim.key] }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </details>
       </div>
 
       <div class="actions">
@@ -1017,7 +946,6 @@ onUnmounted(() => {
         :exporting="exportingMaster"
         :selected-code="selected?.warrant_code || ''"
         :open="masterScreenerOpen"
-        :show-grade="false"
         @select="selectMasterWarrant"
         @page="onPage"
         @toggle="toggleMasterScreener"
@@ -1139,7 +1067,6 @@ onUnmounted(() => {
           :exporting="exportingMaster"
           :selected-code="selected?.warrant_code || ''"
           :open="true"
-          :show-grade="usesClientSideMasterResults()"
           @select="selectMasterWarrant"
           @page="onPage"
           @export="onExportMaster"
@@ -1639,51 +1566,6 @@ onUnmounted(() => {
   margin: -0.15rem 0 0.1rem;
   font-size: 0.76rem;
 }
-.grade-criteria {
-  flex: 1 1 100%;
-  margin: 0.15rem 0 0;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-}
-.grade-criteria summary {
-  cursor: pointer;
-  color: var(--text-dim);
-  user-select: none;
-}
-.grade-criteria summary:hover {
-  color: var(--cyan-bright, #38bdf8);
-}
-.grade-matrix-wrap {
-  overflow-x: auto;
-  margin-top: 0.55rem;
-}
-.grade-matrix {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.76rem;
-  line-height: 1.4;
-}
-.grade-matrix th,
-.grade-matrix td {
-  border: 1px solid rgba(148, 183, 205, 0.16);
-  padding: 0.42rem 0.55rem;
-  text-align: left;
-  vertical-align: top;
-}
-.grade-matrix thead th {
-  background: rgba(7, 11, 20, 0.65);
-  color: var(--text);
-  font-weight: 650;
-}
-.grade-matrix tbody th {
-  background: rgba(7, 11, 20, 0.45);
-  color: var(--text-dim);
-  white-space: nowrap;
-  width: 7.5rem;
-}
-.grade-matrix tbody td:nth-child(2) { color: #fcd34d; }
-.grade-matrix tbody td:nth-child(3) { color: #7dd3fc; }
-.grade-matrix tbody td:nth-child(4) { color: rgba(226, 232, 240, 0.75); }
 .ta-chip-row {
   display: flex;
   flex-wrap: wrap;
