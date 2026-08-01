@@ -2,30 +2,40 @@ import { fetchTimeseries } from '../api'
 import { evaluateTaSignals, hasActiveTaFilters, passesTaFilters } from '../lib/taScreenRules'
 import { gradeWarrant, buildGradeDetail } from '../lib/warrantGrade.js'
 
-const TIMESERIES_LIMIT_DAYS = 750
+const TIMESERIES_LIMIT_DAYS = 90
+const DEFAULT_CONCURRENCY = 14
+
+const barCache = new Map()
+
+function cacheKey(code, limitDays) {
+  return `${code}:${limitDays}`
+}
 
 async function fetchBarsForCode(code, limitDays = TIMESERIES_LIMIT_DAYS) {
+  const key = cacheKey(code, limitDays)
+  if (barCache.has(key)) return barCache.get(key)
   const resp = await fetchTimeseries({ code, limitDays })
-  return Array.isArray(resp?.data) ? resp.data : []
+  const bars = Array.isArray(resp?.data) ? resp.data : []
+  barCache.set(key, bars)
+  return bars
 }
 
-export function needsClientSideMasterFilter(taFilters, barsMin) {
-  const minBars = Number(barsMin)
-  return hasActiveTaFilters(taFilters) || (Number.isFinite(minBars) && minBars > 0)
+export function clearMasterBarCache() {
+  barCache.clear()
 }
 
-/**
- * 逐檔抓日線，套用 K 棒數門檻與／或技術分析條件（同一趟請求）。
- * 符合者附加 bar_count 供結果表顯示。
- */
+export function needsClientSideMasterFilter(taFilters, gradeFilter = '') {
+  return hasActiveTaFilters(taFilters) || !!gradeFilter
+}
+
+/** 逐檔抓日線，套用技術分析／評等條件並計算評等 */
 export async function filterMasterRowsClient(
   rows,
-  { taFilters, barsMin, onProgress, concurrency = 6 } = {},
+  { taFilters, gradeFilter = '', onProgress, concurrency = DEFAULT_CONCURRENCY } = {},
 ) {
   const needTa = hasActiveTaFilters(taFilters)
-  const minBars = Number(barsMin)
-  const needBars = Number.isFinite(minBars) && minBars > 0
-  if ((!needTa && !needBars) || !rows?.length) return rows
+  const needGrade = !!gradeFilter
+  if ((!needTa && !needGrade) || !rows?.length) return rows
 
   const list = [...rows]
   const matched = []
@@ -44,8 +54,7 @@ export async function filterMasterRowsClient(
       }
       try {
         const bars = await fetchBarsForCode(code)
-        const barCount = bars.length
-        if (needBars && barCount < minBars) {
+        if (!bars.length) {
           done += 1
           onProgress?.({ done, total: list.length })
           continue
@@ -56,9 +65,15 @@ export async function filterMasterRowsClient(
           onProgress?.({ done, total: list.length })
           continue
         }
-        const enriched = { ...row, bar_count: barCount }
-        enriched.warrant_grade = gradeWarrant(enriched, { taSignals: signals })
+        const enriched = { ...row, bar_count: bars.length }
+        const grade = gradeWarrant(enriched, { taSignals: signals })
+        enriched.warrant_grade = grade
         enriched.grade_detail = buildGradeDetail(enriched, { taSignals: signals })
+        if (needGrade && grade !== gradeFilter) {
+          done += 1
+          onProgress?.({ done, total: list.length })
+          continue
+        }
         matched.push(enriched)
       } catch {
         /* 略過無行情者 */
@@ -75,5 +90,5 @@ export async function filterMasterRowsClient(
 
 /** @deprecated 改用 filterMasterRowsClient */
 export async function filterMasterRowsByTa(rows, taFilters, options = {}) {
-  return filterMasterRowsClient(rows, { ...options, taFilters, barsMin: undefined })
+  return filterMasterRowsClient(rows, { ...options, taFilters })
 }

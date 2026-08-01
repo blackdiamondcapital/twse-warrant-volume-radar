@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import {
   fetchPortalStats,
   fetchMasterSearch,
@@ -14,11 +14,12 @@ import MasterScreener from './components/MasterScreener.vue'
 import RankingPanel from './components/RankingPanel.vue'
 import StockChartECharts from './components/StockChartECharts.vue'
 import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
-import { exportMasterToExcel, fetchAllMasterRows } from './utils/exportMasterExcel.js'
+import { exportMasterToExcel, fetchAllMasterRows, fetchMasterRowsUpTo } from './utils/exportMasterExcel.js'
 import { exportHeatToExcel } from './utils/exportHeatExcel.js'
+import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { filterMasterRowsClient, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
 import { hasActiveTaFilters } from './lib/taScreenRules.js'
-import { WARRANT_GRADE_MATRIX, GRADE_DIMENSIONS } from './lib/warrantGrade.js'
+import { WARRANT_GRADE_MATRIX, GRADE_DIMENSIONS, gradeApiPrefilters } from './lib/warrantGrade.js'
 
 const {
   isAuthenticated,
@@ -68,13 +69,12 @@ const filters = reactive({
   closeMax: '',
   exerciseMin: '',
   exerciseMax: '',
-  ratioMin: '0.20',
-  ratioMax: '0.5',
-  volumeMin: '500',
+  ratioMin: '',
+  ratioMax: '',
+  volumeMin: '',
   volumeMax: '',
   daysMin: '',
   daysMax: '',
-  barsMin: '30',
   sort: 'expiry',
   sortDir: 'asc',
   page: 1,
@@ -82,7 +82,7 @@ const filters = reactive({
 })
 
 const gradeMatrix = WARRANT_GRADE_MATRIX
-const gradeDimensions = GRADE_DIMENSIONS
+const gradeDimensions = GRADE_DIMENSIONS.filter((d) => d.key === 'expiry' || d.key === 'technical')
 
 function sortRowsByGrade(rows) {
   const order = { A: 0, B: 1, C: 2 }
@@ -90,7 +90,7 @@ function sortRowsByGrade(rows) {
     const ga = order[a.warrant_grade] ?? 9
     const gb = order[b.warrant_grade] ?? 9
     if (ga !== gb) return ga - gb
-    return (b.bar_count ?? 0) - (a.bar_count ?? 0)
+    return String(a.warrant_code || '').localeCompare(String(b.warrant_code || ''))
   })
 }
 
@@ -100,6 +100,9 @@ const taFilters = reactive({
   ma5gtMa10: false,
   duoKongTrendFirstRed: false,
 })
+
+/** '' | 'A' | 'B' | 'C' — 評等選股（需逐檔日線計算） */
+const gradeFilter = ref('')
 
 const masterRows = ref([])
 const masterTotal = ref(0)
@@ -111,12 +114,21 @@ function usesClientSideMasterResults() {
 }
 
 function clientFilterStatusLabel(filteredCount, page) {
-  const barsMin = numOrUndef(filters.barsMin)
   const parts = []
-  if (barsMin) parts.push(`K棒≥${barsMin}`)
+  if (gradeFilter.value) parts.push(`${gradeFilter.value} 級`)
   if (hasActiveTaFilters(taFilters)) parts.push('技術')
   const tag = parts.length ? parts.join('＋') : '篩選'
-  return `符合 ${filteredCount.toLocaleString()} 檔（${tag}＋基本面）· 第 ${page} 頁`
+  return `符合 ${filteredCount.toLocaleString()} 檔（${tag}）· 第 ${page} 頁`
+}
+
+function filtersForClientFetch() {
+  if (!gradeFilter.value) return filters
+  const pref = gradeApiPrefilters(gradeFilter.value)
+  const merged = { ...filters }
+  for (const [key, val] of Object.entries(pref)) {
+    if (merged[key] === '' || merged[key] == null) merged[key] = String(val)
+  }
+  return merged
 }
 
 function paginateClientFilteredRows(page) {
@@ -144,6 +156,109 @@ const detail = ref(null)
 const loadingDetail = ref(false)
 const techChartRef = ref(null)
 const chartFullscreen = ref(false)
+
+const masterCarouselRows = ref([])
+const carouselIndex = ref(0)
+const carouselPlaying = ref(false)
+const CAROUSEL_INTERVAL_MS = 8000
+let carouselTimer = null
+
+const masterCarouselEnabled = computed(() =>
+  showMasterResults.value && masterCarouselRows.value.length > 1,
+)
+
+const carouselCurrentRow = computed(() =>
+  masterCarouselRows.value[carouselIndex.value] || null,
+)
+
+function stopCarouselTimer() {
+  if (carouselTimer) {
+    clearInterval(carouselTimer)
+    carouselTimer = null
+  }
+}
+
+function startCarouselTimer() {
+  stopCarouselTimer()
+  if (masterCarouselRows.value.length <= 1) return
+  carouselTimer = setInterval(() => {
+    void goCarouselIndex(carouselIndex.value + 1, { openChart: chartFullscreen.value })
+  }, CAROUSEL_INTERVAL_MS)
+}
+
+async function syncMasterCarouselRows() {
+  stopCarouselTimer()
+  carouselPlaying.value = false
+
+  if (!masterTotal.value) {
+    masterCarouselRows.value = []
+    carouselIndex.value = 0
+    return
+  }
+
+  const limit = Math.max(getCarouselLimitForUser(user.value, 'watchlist'), 2)
+  let rows = []
+
+  if (clientFilterActive.value && taFilteredRows.value.length) {
+    rows = taFilteredRows.value
+  } else if (masterTotal.value <= filters.pageSize) {
+    rows = masterRows.value
+  } else {
+    try {
+      rows = await fetchMasterRowsUpTo(filters, numOrUndef, limit)
+    } catch {
+      rows = masterRows.value
+    }
+  }
+
+  masterCarouselRows.value = rows.slice(0, limit)
+
+  if (selected.value?.warrant_code) {
+    const idx = masterCarouselRows.value.findIndex(
+      (r) => r.warrant_code === selected.value.warrant_code,
+    )
+    carouselIndex.value = idx >= 0 ? idx : 0
+  } else {
+    carouselIndex.value = 0
+  }
+}
+
+async function goCarouselIndex(nextIndex, { openChart = false } = {}) {
+  const len = masterCarouselRows.value.length
+  if (!len) return
+  const idx = ((nextIndex % len) + len) % len
+  carouselIndex.value = idx
+  await selectWarrant(masterCarouselRows.value[idx], { openChart })
+}
+
+function onCarouselPrev() {
+  void goCarouselIndex(carouselIndex.value - 1, { openChart: chartFullscreen.value })
+}
+
+function onCarouselNext() {
+  void goCarouselIndex(carouselIndex.value + 1, { openChart: chartFullscreen.value })
+}
+
+function onCarouselToggle() {
+  carouselPlaying.value = !carouselPlaying.value
+  if (carouselPlaying.value) startCarouselTimer()
+  else stopCarouselTimer()
+}
+
+async function startMasterCarousel() {
+  if (!masterCarouselRows.value.length) return
+  if (!requireLoginForChart()) return
+  carouselIndex.value = 0
+  await selectWarrant(masterCarouselRows.value[0], { openChart: true })
+  carouselPlaying.value = true
+  startCarouselTimer()
+}
+
+async function openCarouselChart() {
+  if (!carouselCurrentRow.value) return
+  if (!requireLoginForChart()) return
+  await selectWarrant(carouselCurrentRow.value, { openChart: true })
+}
 
 async function loadStats() {
   try {
@@ -175,15 +290,21 @@ const masterSearchSummary = computed(() => {
   const parts = []
   if (filters.q?.trim()) parts.push(`關鍵字「${filters.q.trim()}」`)
   if (filters.type) parts.push(filters.type)
+  const ratioMin = numOrUndef(filters.ratioMin)
+  const ratioMax = numOrUndef(filters.ratioMax)
+  if (ratioMin != null || ratioMax != null) {
+    const lo = ratioMin ?? '—'
+    const hi = ratioMax ?? '—'
+    parts.push(`行使比例 ${lo}–${hi}`)
+  }
   const ta = []
   if (taFilters.reversalFirstRed) ta.push('小不點第一根紅')
   if (taFilters.heikinFirstRed) ta.push('神奇K線第一根紅')
   if (taFilters.ma5gtMa10) ta.push('5均>10均')
   if (taFilters.duoKongTrendFirstRed) ta.push('多空趨勢線第一根紅')
   if (ta.length) parts.push(ta.join('＋'))
-  const barsMin = numOrUndef(filters.barsMin)
-  if (barsMin) parts.push(`K棒≥${barsMin}`)
-  if (ta.length || barsMin) parts.unshift('日線')
+  if (ta.length) parts.unshift('日線')
+  if (gradeFilter.value) parts.push(`${gradeFilter.value} 級選股`)
   return parts.length ? parts.join(' · ') : '全部未到期主檔'
 })
 
@@ -196,25 +317,26 @@ function numOrUndef(v) {
 async function loadMaster() {
   loadingMaster.value = true
   try {
-    const barsMin = numOrUndef(filters.barsMin)
-    if (needsClientSideMasterFilter(taFilters, barsMin)) {
-      statusText.value = '主檔查詢中（含日線篩選）…'
-      const allRows = await fetchAllMasterRows(filters, numOrUndef, {
+    if (needsClientSideMasterFilter(taFilters, gradeFilter.value)) {
+      const clientFilters = filtersForClientFetch()
+      statusText.value = gradeFilter.value
+        ? `主檔查詢中（${gradeFilter.value} 級選股）…`
+        : '主檔查詢中（含技術分析篩選）…'
+      const allRows = await fetchAllMasterRows(clientFilters, numOrUndef, {
         onProgress: ({ loaded, total }) => {
           statusText.value = `載入主檔 ${loaded.toLocaleString()} / ${total.toLocaleString()}…`
         },
       })
-      const label = barsMin && hasActiveTaFilters(taFilters)
-        ? '日線篩選'
-        : barsMin
-          ? 'K 棒數篩選'
-          : '技術分析篩選'
-      statusText.value = `${label}中… 0 / ${allRows.length}`
+      statusText.value = gradeFilter.value
+        ? `${gradeFilter.value} 級評分中… 0 / ${allRows.length}`
+        : `技術分析篩選中… 0 / ${allRows.length}`
       const filtered = sortRowsByGrade(await filterMasterRowsClient(allRows, {
         taFilters,
-        barsMin,
+        gradeFilter: gradeFilter.value,
         onProgress: ({ done, total }) => {
-          statusText.value = `${label} ${done} / ${total}…`
+          statusText.value = gradeFilter.value
+            ? `${gradeFilter.value} 級評分 ${done} / ${total}…`
+            : `技術分析篩選 ${done} / ${total}…`
         },
       }))
       taFilteredRows.value = filtered
@@ -258,6 +380,13 @@ async function loadMaster() {
     statusText.value = `主檔查詢失敗：${err.message}`
   } finally {
     loadingMaster.value = false
+    if (masterTotal.value > 0) void syncMasterCarouselRows()
+    else {
+      masterCarouselRows.value = []
+      carouselIndex.value = 0
+      stopCarouselTimer()
+      carouselPlaying.value = false
+    }
   }
 }
 
@@ -350,8 +479,10 @@ function requireLoginForChart() {
   return false
 }
 
-async function selectWarrant(row) {
+async function selectWarrant(row, { openChart = true } = {}) {
   if (!row?.warrant_code) return
+  const idx = masterCarouselRows.value.findIndex((r) => r.warrant_code === row.warrant_code)
+  if (idx >= 0) carouselIndex.value = idx
   selected.value = row
   loadingDetail.value = true
   try {
@@ -383,7 +514,7 @@ async function selectWarrant(row) {
       }
     }
     await nextTick()
-    openTechChartOrLogin()
+    if (openChart) openTechChartOrLogin()
   } catch (err) {
     console.error(err)
     statusText.value = `載入詳情失敗：${err.message}`
@@ -394,6 +525,10 @@ async function selectWarrant(row) {
 
 function onChartFullscreenChange(active) {
   chartFullscreen.value = !!active
+  if (!active) {
+    stopCarouselTimer()
+    carouselPlaying.value = false
+  }
 }
 
 function openTechChart() {
@@ -419,6 +554,10 @@ async function onSearch() {
 
 function backToSearch() {
   showMasterResults.value = false
+  stopCarouselTimer()
+  carouselPlaying.value = false
+  masterCarouselRows.value = []
+  carouselIndex.value = 0
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
@@ -436,17 +575,26 @@ async function onExportMaster() {
   exportingMaster.value = true
   statusText.value = '正在準備 Excel…'
   try {
-    const presetRows = clientFilterActive.value ? taFilteredRows.value : null
-    const count = await exportMasterToExcel(filters, numOrUndef, {
+    let presetRows = null
+    if (clientFilterActive.value && taFilteredRows.value.length) {
+      presetRows = taFilteredRows.value
+    } else if (masterTotal.value > 0 && masterTotal.value <= filters.pageSize) {
+      presetRows = masterRows.value
+    }
+    const { count, method } = await exportMasterToExcel(filters, numOrUndef, {
       rows: presetRows || undefined,
       onProgress: ({ loaded, total }) => {
         statusText.value = `匯出中… ${loaded.toLocaleString()} / ${total.toLocaleString()} 檔`
       },
     })
-    statusText.value = `已下載 Excel（${count.toLocaleString()} 檔）`
+    statusText.value = excelDownloadStatus(method, count)
   } catch (err) {
     console.error(err)
-    statusText.value = `Excel 匯出失敗：${err.message}`
+    if (err?.name === 'AbortError') {
+      statusText.value = '已取消匯出'
+    } else {
+      statusText.value = `Excel 匯出失敗：${err.message}`
+    }
   } finally {
     exportingMaster.value = false
   }
@@ -462,14 +610,18 @@ function toggleHeatSection() {
   heatSectionOpen.value = !heatSectionOpen.value
 }
 
-function onExportHeat() {
+async function onExportHeat() {
   exportingHeat.value = true
   statusText.value = '正在準備 Excel…'
   try {
-    const count = exportHeatToExcel(rankings.value, { tradeDate: selectedDate.value })
-    statusText.value = `已匯出 ${count.toLocaleString()} 檔熱度排行`
+    const { count, method } = await exportHeatToExcel(rankings.value, { tradeDate: selectedDate.value })
+    statusText.value = excelDownloadStatus(method, count)
   } catch (err) {
-    statusText.value = err.message || '熱度匯出失敗'
+    if (err?.name === 'AbortError') {
+      statusText.value = '已取消匯出'
+    } else {
+      statusText.value = err.message || '熱度匯出失敗'
+    }
   } finally {
     exportingHeat.value = false
   }
@@ -479,14 +631,25 @@ function toggleTaFilter(key) {
   taFilters[key] = !taFilters[key]
 }
 
-function clearTechnicalFilters() {
+function setGradeFilter(grade) {
+  gradeFilter.value = gradeFilter.value === grade ? '' : grade
+  filters.page = 1
+  if (showMasterResults.value) onSearch()
+}
+
+function clearTaFilters() {
   taFilters.reversalFirstRed = false
   taFilters.heikinFirstRed = false
   taFilters.ma5gtMa10 = false
   taFilters.duoKongTrendFirstRed = false
-  filters.barsMin = '30'
   filters.page = 1
-  loadMaster()
+  if (showMasterResults.value) loadMaster()
+}
+
+function clearGradeFilterOnly() {
+  gradeFilter.value = ''
+  filters.page = 1
+  if (showMasterResults.value) loadMaster()
 }
 
 function clearFundamentalFilters() {
@@ -496,9 +659,9 @@ function clearFundamentalFilters() {
   filters.closeMax = ''
   filters.exerciseMin = ''
   filters.exerciseMax = ''
-  filters.ratioMin = '0.20'
-  filters.ratioMax = '0.5'
-  filters.volumeMin = '500'
+  filters.ratioMin = ''
+  filters.ratioMax = ''
+  filters.volumeMin = ''
   filters.volumeMax = ''
   filters.daysMin = ''
   filters.daysMax = ''
@@ -555,6 +718,10 @@ onMounted(async () => {
 
   await Promise.all([loadStats(), loadDates()])
   await loadRankings()
+})
+
+onUnmounted(() => {
+  stopCarouselTimer()
 })
 </script>
 
@@ -644,16 +811,10 @@ onMounted(async () => {
             <input v-model="filters.exerciseMax" type="number" step="any" min="0" placeholder="高" />
           </div>
           <div class="range-field range-field--ratio">
-            <label>行使比</label>
-            <input v-model="filters.ratioMin" type="number" step="0.001" min="0" placeholder="低" />
+            <label>行使比例</label>
+            <input v-model="filters.ratioMin" type="number" step="any" min="0" placeholder="低" />
             <span class="sep">–</span>
-            <input v-model="filters.ratioMax" type="number" step="0.001" min="0" placeholder="高" />
-          </div>
-          <div class="range-field range-field--volume">
-            <label>成交量</label>
-            <input v-model="filters.volumeMin" type="number" step="1" min="0" placeholder="低" />
-            <span class="sep">–</span>
-            <input v-model="filters.volumeMax" type="number" step="1" min="0" placeholder="高" />
+            <input v-model="filters.ratioMax" type="number" step="any" min="0" placeholder="高" />
           </div>
           <div class="range-field">
             <label>剩餘天數</label>
@@ -675,20 +836,36 @@ onMounted(async () => {
           <h3>技術分析</h3>
           <span class="ta-period-badge">日線</span>
         </div>
-        <p class="ta-hint muted">權證日線篩選；小不點參數依資料長度自動調整</p>
-        <div class="ta-bars-field">
-          <label for="bars-min">K 棒數 ≥</label>
-          <input
-            id="bars-min"
-            v-model="filters.barsMin"
-            type="number"
-            step="1"
-            min="1"
-            max="750"
-            placeholder="30"
-            inputmode="numeric"
-          />
-          <span class="ta-bars-hint muted">逐檔查日線根數（目前資料最多約 50 根）</span>
+        <p class="ta-hint muted">權證日線篩選；小不點參數依資料長度自動調整。選「A/B/C 級選股」會逐檔計算評等（較慢）。</p>
+        <div class="grade-filter-row">
+          <span class="grade-filter-label">評等選股</span>
+          <button
+            type="button"
+            class="chip-btn grade-chip grade-chip--a"
+            :class="{ active: gradeFilter === 'A' }"
+            @click="setGradeFilter('A')"
+          >A 級</button>
+          <button
+            type="button"
+            class="chip-btn grade-chip grade-chip--b"
+            :class="{ active: gradeFilter === 'B' }"
+            @click="setGradeFilter('B')"
+          >B 級</button>
+          <button
+            type="button"
+            class="chip-btn grade-chip grade-chip--c"
+            :class="{ active: gradeFilter === 'C' }"
+            @click="setGradeFilter('C')"
+          >C 級</button>
+          <span v-if="gradeFilter" class="grade-filter-hint muted">
+            已選 {{ gradeFilter }} 級 · 搜尋後僅顯示該評等
+          </span>
+          <button
+            v-if="gradeFilter"
+            type="button"
+            class="btn-clear-sm"
+            @click="clearGradeFilterOnly"
+          >清除評等</button>
         </div>
         <div class="ta-chip-row">
           <button
@@ -715,15 +892,9 @@ onMounted(async () => {
             :class="{ active: taFilters.duoKongTrendFirstRed }"
             @click="toggleTaFilter('duoKongTrendFirstRed')"
           >多空趨勢線第一根紅</button>
-          <button
-            v-if="taFilters.reversalFirstRed || taFilters.heikinFirstRed || taFilters.ma5gtMa10 || taFilters.duoKongTrendFirstRed || filters.barsMin"
-            type="button"
-            class="chip-clear"
-            @click="clearTechnicalFilters"
-          >清除技術條件</button>
         </div>
         <details class="grade-criteria">
-          <summary>A / B / C 評等標準（成交量 · 行使比 · 到期日 · 技術面）</summary>
+          <summary>A / B / C 評等標準（到期日 · 技術面；量能／行使比納入評分但不顯示數值）</summary>
           <div class="grade-matrix-wrap">
             <table class="grade-matrix">
               <thead>
@@ -751,7 +922,12 @@ onMounted(async () => {
         <button class="primary" :disabled="loadingMaster" @click="onSearch">
           {{ loadingMaster ? '搜尋中…' : '搜尋主檔' }}
         </button>
-        <button type="button" @click="clearFundamentalFilters">清除基本面條件</button>
+        <button type="button" class="btn-clear-sm" @click="clearFundamentalFilters">清除基本面條件</button>
+        <button
+          type="button"
+          class="btn-clear-sm"
+          @click="clearTaFilters"
+        >清除技術面</button>
         <button
           v-if="isAdmin"
           :disabled="importing"
@@ -773,7 +949,6 @@ onMounted(async () => {
         :exporting="exportingMaster"
         :selected-code="selected?.warrant_code || ''"
         :open="masterScreenerOpen"
-        :show-bar-count="usesClientSideMasterResults()"
         :show-grade="usesClientSideMasterResults()"
         @select="selectMasterWarrant"
         @page="onPage"
@@ -868,6 +1043,34 @@ onMounted(async () => {
 
         <p class="status muted">{{ statusText }}</p>
 
+        <div v-if="masterCarouselEnabled" class="carousel-bar panel">
+          <div class="carousel-bar-main">
+            <span class="carousel-indicator">
+              輪播 {{ carouselIndex + 1 }} / {{ masterCarouselRows.length }}
+            </span>
+            <p v-if="carouselCurrentRow" class="carousel-current">
+              <span class="mono">{{ carouselCurrentRow.warrant_code }}</span>
+              {{ carouselCurrentRow.warrant_name }}
+            </p>
+          </div>
+          <div class="carousel-btns">
+            <button type="button" class="carousel-btn" @click="onCarouselPrev">上一檔</button>
+            <button
+              type="button"
+              class="carousel-btn carousel-btn--play"
+              :class="{ active: carouselPlaying }"
+              @click="onCarouselToggle"
+            >{{ carouselPlaying ? '暫停' : '播放' }}</button>
+            <button type="button" class="carousel-btn" @click="onCarouselNext">下一檔</button>
+            <button type="button" class="carousel-btn carousel-btn--chart" @click="openCarouselChart">
+              全螢幕圖
+            </button>
+            <button type="button" class="carousel-btn carousel-btn--start" @click="startMasterCarousel">
+              開始輪播
+            </button>
+          </div>
+        </div>
+
         <MasterScreener
           results-mode
           :rows="masterRows"
@@ -879,7 +1082,6 @@ onMounted(async () => {
           :exporting="exportingMaster"
           :selected-code="selected?.warrant_code || ''"
           :open="true"
-          :show-bar-count="usesClientSideMasterResults()"
           :show-grade="usesClientSideMasterResults()"
           @select="selectMasterWarrant"
           @page="onPage"
@@ -898,6 +1100,13 @@ onMounted(async () => {
         :warrant-info="detail"
         period="1D"
         :fullscreen-search-enabled="false"
+        :carousel-enabled="masterCarouselEnabled"
+        :carousel-index="carouselIndex"
+        :carousel-length="masterCarouselRows.length"
+        :carousel-playing="carouselPlaying"
+        @carousel-prev="onCarouselPrev"
+        @carousel-next="onCarouselNext"
+        @carousel-toggle="onCarouselToggle"
         @fullscreen-change="onChartFullscreenChange"
       />
     </div>
@@ -1101,11 +1310,21 @@ onMounted(async () => {
   align-items: baseline;
   gap: 0.65rem;
   min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
 }
 .heat-head-main h2 {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 650;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.heat-head-main .muted {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .heat-head .chev {
   color: var(--text-dim);
@@ -1268,9 +1487,12 @@ onMounted(async () => {
   border-radius: 6px;
   color: var(--text);
 }
-.range-field--exercise input,
-.range-field--ratio input {
+.range-field--exercise input {
   width: 5.85rem;
+}
+.range-field--ratio input {
+  width: 3.6rem;
+  padding: 0.32rem 0.35rem;
 }
 .range-field--volume input {
   width: 5.2rem;
@@ -1308,26 +1530,36 @@ onMounted(async () => {
   margin: -0.15rem 0 0.1rem;
   font-size: 0.76rem;
 }
-.ta-bars-field {
+.grade-filter-row {
   flex: 1 1 100%;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.35rem 0.55rem;
-  margin: 0.05rem 0 0.15rem;
+  margin: 0.05rem 0 0.1rem;
 }
-.ta-bars-field label {
+.grade-filter-label {
   font-size: 0.82rem;
   color: var(--text-muted);
-  flex-shrink: 0;
+  white-space: nowrap;
 }
-.ta-bars-field input {
-  width: 5rem;
-  padding: 0.28rem 0.45rem;
-  font-size: 0.84rem;
-}
-.ta-bars-hint {
+.grade-filter-hint {
   font-size: 0.74rem;
+}
+.grade-chip.active.grade-chip--a {
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.16);
+}
+.grade-chip.active.grade-chip--b {
+  color: #7dd3fc;
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(56, 189, 248, 0.14);
+}
+.grade-chip.active.grade-chip--c {
+  color: rgba(226, 232, 240, 0.9);
+  border-color: rgba(148, 163, 184, 0.45);
+  background: rgba(148, 163, 184, 0.12);
 }
 .grade-criteria {
   flex: 1 1 100%;
@@ -1417,7 +1649,24 @@ onMounted(async () => {
 .actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.65rem;
+}
+.btn-clear-sm {
+  font-size: 0.76rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 6px;
+  color: var(--text);
+  background: rgba(0, 212, 255, 0.04);
+  border-color: rgba(0, 212, 255, 0.22);
+  white-space: nowrap;
+}
+.btn-clear-sm:hover:not(:disabled) {
+  color: var(--cyan-bright);
+  border-color: rgba(0, 212, 255, 0.4);
+  background: rgba(0, 212, 255, 0.08);
+  transform: none;
+  box-shadow: none;
 }
 .status {
   margin: 0 0 1rem;
@@ -1428,6 +1677,85 @@ onMounted(async () => {
   display: grid;
   gap: 0.85rem;
   animation: rise 0.85s ease both;
+}
+.carousel-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+  padding: 0.75rem 1rem;
+}
+.carousel-bar-main {
+  min-width: 0;
+  flex: 1;
+}
+.carousel-indicator {
+  font-size: 0.88rem;
+  font-weight: 650;
+  color: var(--cyan-bright);
+}
+.carousel-current {
+  margin: 0.25rem 0 0;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+.carousel-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.carousel-btn {
+  font-size: 0.78rem;
+  padding: 0.32rem 0.62rem;
+  border-radius: 7px;
+  border: 1px solid rgba(0, 212, 255, 0.28);
+  background: rgba(0, 212, 255, 0.06);
+  color: var(--text);
+  white-space: nowrap;
+}
+.carousel-btn:hover {
+  border-color: rgba(0, 212, 255, 0.45);
+  color: var(--cyan-bright);
+  background: rgba(0, 212, 255, 0.1);
+}
+.carousel-btn--play.active {
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.12);
+}
+.carousel-btn--start {
+  color: var(--cyan-bright);
+  font-weight: 650;
+}
+@media (max-width: 640px) {
+  .carousel-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .carousel-btns {
+    justify-content: center;
+  }
+  .heat-head-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.55rem;
+  }
+  .heat-head {
+    width: 100%;
+  }
+  .heat-head-row > .export-btn {
+    align-self: flex-end;
+  }
+  .heat-row--controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .heat-row--controls .chip-btns {
+    width: 100%;
+  }
 }
 .results-nav {
   display: flex;

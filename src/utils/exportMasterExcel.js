@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx'
 import { fetchMasterSearch } from '../api'
 import { warrantTypeLabel } from './warrantDisplay'
+import { downloadExcelFile } from './downloadExcel.js'
 
 function pad2(n) {
   return String(n).padStart(2, '0')
@@ -43,16 +44,13 @@ function rowToSheetRow(row) {
     標的代號: row.underlying_code ?? '',
     標的名稱: row.underlying_name ?? '',
     市場: row.market ?? '',
-    K棒數: row.bar_count ?? '',
     評等: row.warrant_grade ?? '',
-    '評等-成交量': row.grade_detail?.volume ?? '',
-    '評等-行使比': row.grade_detail?.ratio ?? '',
+    '評等-量': row.grade_detail?.volume ?? '',
+    '評等-比': row.grade_detail?.ratio ?? '',
     '評等-到期日': row.grade_detail?.expiry ?? '',
     '評等-技術面': row.grade_detail?.technical ?? '',
     收盤: row.close_price ?? '',
-    成交量: row.volume ?? '',
     履約價: row.latest_exercise_price ?? '',
-    行使比: row.latest_exercise_ratio ?? '',
     剩餘天數: row.days_to_expiry ?? '',
     到期日: row.expiry_date ?? '',
     發行量: row.issuance ?? '',
@@ -60,19 +58,19 @@ function rowToSheetRow(row) {
   }
 }
 
-export function exportRowsToExcel(rows, filenamePrefix = '權證主檔') {
+export async function exportRowsToExcel(rows, filenamePrefix = '權證主檔') {
   if (!rows?.length) {
     throw new Error('沒有符合條件的主檔可匯出')
   }
   const sheet = XLSX.utils.json_to_sheet(rows.map(rowToSheetRow))
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, sheet, '發行主檔')
-  XLSX.writeFile(workbook, `${filenamePrefix}_${todayStamp()}.xlsx`)
-  return rows.length
+  const method = await downloadExcelFile(workbook, `${filenamePrefix}_${todayStamp()}.xlsx`)
+  return { count: rows.length, method }
 }
 
 export async function fetchAllMasterRows(filters, numOrUndef, { onProgress } = {}) {
-  const pageSize = 500
+  const pageSize = 1000
   let page = 1
   let total = Infinity
   const allRows = []
@@ -88,6 +86,26 @@ export async function fetchAllMasterRows(filters, numOrUndef, { onProgress } = {
   }
 
   return allRows
+}
+
+/** 主檔輪播：最多抓 maxRows 筆，避免一次載入過多 */
+export async function fetchMasterRowsUpTo(filters, numOrUndef, maxRows = 200) {
+  const cap = Math.max(1, Number(maxRows) || 200)
+  const pageSize = Math.min(1000, cap)
+  let page = 1
+  let total = Infinity
+  const allRows = []
+
+  while (allRows.length < total && allRows.length < cap) {
+    const data = await fetchMasterSearch(buildSearchParams(filters, numOrUndef, page, pageSize))
+    const rows = data.data || []
+    total = Number(data.total) || 0
+    allRows.push(...rows)
+    if (!rows.length || allRows.length >= total || allRows.length >= cap) break
+    page += 1
+  }
+
+  return allRows.slice(0, cap)
 }
 
 export async function exportMasterToExcel(filters, numOrUndef, { onProgress, rows: presetRows } = {}) {

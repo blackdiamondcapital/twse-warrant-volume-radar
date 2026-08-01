@@ -14,8 +14,6 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   /** 搜尋結果頁：固定展開、不可收合 */
   resultsMode: { type: Boolean, default: false },
-  /** 日線篩選結果：顯示 K 棒數欄 */
-  showBarCount: { type: Boolean, default: false },
   /** 日線篩選結果：顯示 A/B/C 評等 */
   showGrade: { type: Boolean, default: false },
 })
@@ -42,27 +40,37 @@ const columns = computed(() => {
     { key: 'code', label: '代號' },
   ]
   if (props.showGrade) {
-    base.push({ key: 'grade', label: '評等', align: 'num' })
+    base.push({ key: 'grade', label: '評等／評分' })
   }
   base.push(
     { key: 'name', label: '名稱' },
     { key: 'underlying', label: '標的' },
   )
-  if (props.showBarCount) {
-    base.push({ key: 'bars', label: 'K棒數', align: 'num' })
-  }
   base.push(
     { key: 'close', label: '收盤', align: 'num' },
-    { key: 'volume', label: '成交量', align: 'num' },
     { key: 'exercise', label: '履約價', align: 'num' },
     { key: 'days', label: '剩餘天數', align: 'num' },
-    { key: 'ratio', label: '行使比', align: 'num' },
     { key: 'expiry', label: '到期日' },
   )
   return base
 })
 
 const pageCount = computed(() => Math.max(1, Math.ceil((props.total || 0) / props.pageSize)))
+
+const canExportExcel = computed(() => {
+  if (props.total > 0) return true
+  if (!props.resultsMode && props.statsTotal > 0) return true
+  return false
+})
+
+const exportBtnTitle = computed(() => {
+  if (canExportExcel.value) {
+    return props.total > 0
+      ? `匯出符合條件的 ${props.total.toLocaleString()} 檔`
+      : `依目前篩選匯出主檔（全市場約 ${props.statsTotal.toLocaleString()} 檔）`
+  }
+  return '沒有可匯出的資料'
+})
 
 function fmt(n, digits = 2) {
   if (n == null || Number.isNaN(Number(n))) return '—'
@@ -79,7 +87,13 @@ function daysClass(days) {
 function gradeTitle(row) {
   const d = row?.grade_detail
   if (!d) return ''
-  return `成交量 ${d.volume} · 行使比 ${d.ratio} · ${d.expiry} · 技術面 ${d.technical}`
+  return `量 ${d.volume} · 比 ${d.ratio} · ${d.expiry} · 技術 ${d.technical}`
+}
+
+function gradeTagClass(ok, partial = false) {
+  if (ok) return 'g-tag g-tag--ok'
+  if (partial) return 'g-tag g-tag--partial'
+  return 'g-tag g-tag--miss'
 }
 
 function gradeClass(grade) {
@@ -109,7 +123,9 @@ function gradeClass(grade) {
       <button
         type="button"
         class="export-btn"
-        :disabled="exporting || loading || !total"
+        :class="{ 'export-btn--ready': canExportExcel && !exporting && !loading }"
+        :disabled="exporting || loading || !canExportExcel"
+        :title="exportBtnTitle"
         @click.stop="emit('export')"
       >
         {{ exporting ? '匯出中…' : '下載 Excel' }}
@@ -140,13 +156,21 @@ function gradeClass(grade) {
               @click="emit('select', row)"
             >
               <td class="mono">{{ row.warrant_code }}</td>
-              <td v-if="showGrade" class="num">
-                <span
-                  v-if="row.warrant_grade"
-                  :class="gradeClass(row.warrant_grade)"
-                  :title="gradeTitle(row)"
-                >{{ row.warrant_grade }}</span>
-                <span v-else class="grade-badge grade-badge--none">—</span>
+              <td v-if="showGrade" class="grade-cell">
+                <div class="grade-stack">
+                  <span
+                    v-if="row.warrant_grade"
+                    :class="gradeClass(row.warrant_grade)"
+                    :title="gradeTitle(row)"
+                  >{{ row.warrant_grade }}</span>
+                  <span v-else class="grade-badge grade-badge--none">—</span>
+                  <div v-if="row.grade_detail" class="grade-tags" :title="gradeTitle(row)">
+                    <span :class="gradeTagClass(row.grade_detail.volumeAOk)">量</span>
+                    <span :class="gradeTagClass(row.grade_detail.ratioOk)">比</span>
+                    <span :class="gradeTagClass(row.grade_detail.expiryAOk, row.grade_detail.expiryOk && !row.grade_detail.expiryAOk)">日</span>
+                    <span :class="gradeTagClass(row.grade_detail.technicalOk)">技</span>
+                  </div>
+                </div>
               </td>
               <td>{{ row.warrant_name }}</td>
               <td class="underlying">
@@ -158,14 +182,11 @@ function gradeClass(grade) {
                 >{{ warrantTypeLabel(row) }}</span>
                 <span class="underlying-name">{{ row.underlying_name || '—' }}</span>
               </td>
-              <td v-if="showBarCount" class="num mono bars-cell">{{ row.bar_count ?? '—' }}</td>
               <td class="num mono">{{ fmt(row.close_price, 2) }}</td>
-              <td class="num mono">{{ fmt(row.volume, 0) }}</td>
               <td class="num mono">{{ fmt(row.latest_exercise_price) }}</td>
               <td class="num mono" :class="daysClass(row.days_to_expiry)">
                 {{ row.days_to_expiry == null ? '—' : row.days_to_expiry }}
               </td>
-              <td class="num mono">{{ fmt(row.latest_exercise_ratio, 4) }}</td>
               <td class="mono">{{ row.expiry_date || '—' }}</td>
             </tr>
           </tbody>
@@ -214,6 +235,12 @@ function gradeClass(grade) {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.export-btn--ready {
+  border-color: rgba(0, 212, 255, 0.55);
+  background: rgba(0, 212, 255, 0.14);
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.18);
 }
 .export-btn:hover:not(:disabled) {
   border-color: rgba(0, 212, 255, 0.55);
@@ -263,9 +290,46 @@ function gradeClass(grade) {
   gap: 0.85rem;
   margin-top: 0.85rem;
 }
-.bars-cell {
-  color: var(--cyan-bright, #38bdf8);
-  font-weight: 650;
+.grade-cell {
+  min-width: 5.5rem;
+}
+.grade-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.28rem;
+}
+.grade-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.22rem;
+}
+.g-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  padding: 0.04rem 0.28rem;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.25;
+  border: 1px solid transparent;
+}
+.g-tag--ok {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+.g-tag--partial {
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.32);
+}
+.g-tag--miss {
+  color: rgba(148, 163, 184, 0.75);
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.2);
 }
 .grade-badge {
   display: inline-flex;

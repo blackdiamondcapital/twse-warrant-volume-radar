@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import { warrantTypeLabel } from './warrantDisplay'
+import { downloadExcelFile } from './downloadExcel.js'
 
 function pad2(n) {
   return String(n).padStart(2, '0')
@@ -25,7 +26,7 @@ function rowToSheetRow(row) {
   }
 }
 
-export function exportHeatToExcel(rows, { tradeDate } = {}) {
+export async function exportHeatToExcel(rows, { tradeDate } = {}) {
   if (!rows?.length) {
     throw new Error('沒有熱度排行可匯出')
   }
@@ -34,6 +35,6 @@ export function exportHeatToExcel(rows, { tradeDate } = {}) {
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, sheet, '當日熱度')
   const datePart = tradeDate ? String(tradeDate).replace(/-/g, '') : todayStamp()
-  XLSX.writeFile(workbook, `當日熱度_${datePart}.xlsx`)
-  return rows.length
+  const method = await downloadExcelFile(workbook, `當日熱度_${datePart}.xlsx`)
+  return { count: rows.length, method }
 }

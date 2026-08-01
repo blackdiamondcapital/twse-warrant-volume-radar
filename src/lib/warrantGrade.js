@@ -15,24 +15,24 @@ export const WARRANT_GRADE_MATRIX = {
   A: {
     label: 'A',
     title: 'A 級（佳）',
-    volume: '≥ 1,000 張',
-    ratio: `${GRADE_RATIO_MIN}～${GRADE_RATIO_MAX}`,
+    volume: '達標（量能充足）',
+    ratio: '達標（理想區間）',
     expiry: '剩餘 30～180 日',
     technical: '至少 1 項成立（小不點／神奇K／5均>10均／多空趨勢線）',
   },
   B: {
     label: 'B',
     title: 'B 級（可）',
-    volume: '≥ 500 張',
-    ratio: `${GRADE_RATIO_MIN}～${GRADE_RATIO_MAX}`,
+    volume: '達標（有基本量能）',
+    ratio: '達標（理想區間）',
     expiry: '剩餘 14～365 日',
     technical: '不要求，但其他三項須達標',
   },
   C: {
     label: 'C',
     title: 'C 級（觀察）',
-    volume: '有成交資料但未達 B',
-    ratio: '超出或未達理想區間',
+    volume: '未達 B',
+    ratio: '未達標',
     expiry: '剩餘天數過短或過長',
     technical: '技術面未達 A 標準',
   },
@@ -166,11 +166,42 @@ export function buildGradeDetail(row, { taSignals } = {}) {
   const d = dimChecks(row, taSignals)
   const taHits = listTaSignalLabels(taSignals)
   return {
-    volume: d.volume != null ? `${d.volume.toLocaleString()} 張` : '—',
-    ratio: num(row?.latest_exercise_ratio)?.toFixed(4) ?? '—',
+    volume: d.volumeA || d.volumeB ? '達標' : '未達標',
+    volumeOk: d.volumeA || d.volumeB,
+    volumeAOk: d.volumeA,
+    ratio: d.ratioOk ? '達標' : '未達標',
+    ratioOk: d.ratioOk,
     expiry: d.days != null ? `剩餘 ${d.days} 日` : (row?.expiry_date || '—'),
+    expiryOk: d.expiryA || d.expiryB,
+    expiryAOk: d.expiryA,
+    days: d.days,
     technical: taHits.length ? taHits.join('、') : '未符合',
+    technicalOk: d.technicalA,
+    taHits,
   }
+}
+
+/** 評等選股時可套用的 API 預篩（使用者已填的條件優先） */
+export function gradeApiPrefilters(gradeFilter) {
+  if (gradeFilter === 'A') {
+    return {
+      volumeMin: 1000,
+      ratioMin: GRADE_RATIO_MIN,
+      ratioMax: GRADE_RATIO_MAX,
+      daysMin: 30,
+      daysMax: 180,
+    }
+  }
+  if (gradeFilter === 'B') {
+    return {
+      volumeMin: 500,
+      ratioMin: GRADE_RATIO_MIN,
+      ratioMax: GRADE_RATIO_MAX,
+      daysMin: 14,
+      daysMax: 365,
+    }
+  }
+  return {}
 }
 
 export function gradeLabel(grade) {
