@@ -321,11 +321,12 @@ function closeUpgradeModal() {
 }
 
 function goToPricing() {
+  const pricingUrl = 'https://www.quantgems.com/pricing'
   try {
-    window.open('https://www.quantgems.com/?view=pricing', '_blank', 'noopener,noreferrer')
+    window.open(pricingUrl, '_blank', 'noopener,noreferrer')
   } catch {
     try {
-      window.location.assign('https://www.quantgems.com/?view=pricing')
+      window.location.assign(pricingUrl)
     } catch {
       // ignore
     }

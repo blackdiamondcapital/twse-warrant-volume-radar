@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
           name: 'QuantGems 權證雷達',
           short_name: '權證雷達',
           description:
-            '台股權證主檔篩選、成交熱度排行與全螢幕技術分析（K線、多空線、KD、RSI、MACD）。',
+            '想快速鎖定台股權證？掃全市場認購／認售、追當日成交熱度，並以全螢幕 K 線與多空線檢視走勢。',
           theme_color: '#06121e',
           background_color: '#06121e',
           display: 'standalone',
