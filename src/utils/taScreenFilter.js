@@ -25,8 +25,9 @@ export function clearMasterBarCache() {
 }
 
 export function needsClientSideMasterFilter(taFilters, gradeFilter = '', { scopedSearch = false } = {}) {
-  if (!scopedSearch) return false
+  // 技術面可掃全市場；評等仍僅在有搜尋範圍時於前端計算
   if (hasActiveTaFilters(taFilters)) return true
+  if (!scopedSearch) return false
   if (gradeFilter) return true
   return false
 }
@@ -53,6 +54,7 @@ export async function filterMasterRowsClient(
     gradeFilter = '',
     gradeOnly = false,
     onProgress,
+    onMatch,
     concurrency = DEFAULT_CONCURRENCY,
   } = {},
 ) {
@@ -64,6 +66,12 @@ export async function filterMasterRowsClient(
   const matched = []
   let done = 0
   let cursor = 0
+  const workerCount = Math.max(1, Math.min(concurrency, list.length))
+
+  function pushMatch(row) {
+    matched.push(row)
+    onMatch?.(row, matched.length)
+  }
 
   async function worker() {
     while (cursor < list.length) {
@@ -72,21 +80,21 @@ export async function filterMasterRowsClient(
       const code = row?.warrant_code
       if (!code) {
         done += 1
-        onProgress?.({ done, total: list.length })
+        onProgress?.({ done, total: list.length, matched: matched.length })
         continue
       }
       try {
         const bars = await fetchBarsForCode(code)
         if (!bars.length) {
-          if (gradeOnly) matched.push({ ...row })
+          if (gradeOnly) pushMatch({ ...row })
           done += 1
-          onProgress?.({ done, total: list.length })
+          onProgress?.({ done, total: list.length, matched: matched.length })
           continue
         }
         const signals = evaluateTaSignals(bars)
         if (needTa && !passesTaFilters(signals, taFilters)) {
           done += 1
-          onProgress?.({ done, total: list.length })
+          onProgress?.({ done, total: list.length, matched: matched.length })
           continue
         }
         const enriched = { ...row, bar_count: bars.length }
@@ -95,19 +103,19 @@ export async function filterMasterRowsClient(
         enriched.grade_detail = buildGradeDetail(enriched, { taSignals: signals })
         if (needGrade && grade !== gradeFilter) {
           done += 1
-          onProgress?.({ done, total: list.length })
+          onProgress?.({ done, total: list.length, matched: matched.length })
           continue
         }
-        matched.push(enriched)
+        pushMatch(enriched)
       } catch {
-        if (gradeOnly) matched.push({ ...row })
+        if (gradeOnly) pushMatch({ ...row })
       }
       done += 1
-      onProgress?.({ done, total: list.length })
+      onProgress?.({ done, total: list.length, matched: matched.length })
     }
   }
 
-  const workers = Array.from({ length: Math.min(concurrency, list.length) }, () => worker())
+  const workers = Array.from({ length: workerCount }, () => worker())
   await Promise.all(workers)
   return matched
 }

@@ -363,7 +363,7 @@ const masterSearchSummary = computed(() => {
   if (taFilters.ma5gtMa10) ta.push('5均>10均')
   if (ta.length) parts.push(ta.join('＋'))
   if (ta.length) parts.unshift('日線')
-  return parts.length ? parts.join(' · ') : '全部未到期主檔'
+  return parts.length ? parts.join(' · ') : '全部未到期權證'
 })
 
 function numOrUndef(v) {
@@ -372,7 +372,6 @@ function numOrUndef(v) {
   return Number.isFinite(n) ? n : undefined
 }
 
-/** 有縮小範圍時才做逐檔技術分析（不掃描全市場） */
 function hasSearchScope() {
   return !!(
     filters.q?.trim()
@@ -398,38 +397,55 @@ async function loadMaster() {
     const scoped = hasSearchScope()
     const wantClientFilter = hasActiveTaFilters(taFilters)
 
-    if (wantClientFilter && !scoped) {
-      statusText.value = '請先輸入標的／關鍵字或篩選條件（技術面僅針對搜尋結果，不掃全市場）'
-      masterRows.value = []
-      masterTotal.value = 0
-      taFilteredRows.value = []
-      clientFilterActive.value = false
-      return
-    }
-
     if (needsClientSideMasterFilter(taFilters, '', { scopedSearch: scoped })) {
       clearMasterBarCache()
-      statusText.value = '搜尋結果技術分析中…'
+      const fullMarket = wantClientFilter && !scoped
+      // 全市場掃描時先依成交量排序，讓有量權證較早被分析
+      const scanFilters = fullMarket
+        ? { ...filters, sort: 'volume', sortDir: 'desc' }
+        : filters
+      statusText.value = fullMarket ? '載入全市場權證…' : '載入搜尋結果…'
       const allRows = await fetchAllMasterRows(
-        filters,
+        scanFilters,
         numOrUndef,
         {
           onProgress: ({ loaded, total }) => {
-            statusText.value = `載入搜尋結果 ${loaded.toLocaleString()} / ${total.toLocaleString()}…`
+            statusText.value = fullMarket
+              ? `載入全市場 ${loaded.toLocaleString()} / ${total.toLocaleString()}…`
+              : `載入搜尋結果 ${loaded.toLocaleString()} / ${total.toLocaleString()}…`
           },
         },
       )
-      statusText.value = `技術分析篩選中… 0 / ${allRows.length}`
+      const concurrency = allRows.length > 2000 ? 28 : allRows.length > 400 ? 20 : 14
+      statusText.value = fullMarket
+        ? `全市場技術分析 0 / ${allRows.length.toLocaleString()}…`
+        : `技術分析篩選中… 0 / ${allRows.length.toLocaleString()}`
+      clientFilterActive.value = true
+      taFilteredRows.value = []
+      masterTotal.value = 0
+      masterRows.value = []
+      let lastUi = 0
+      const liveMatches = []
       const filtered = applyMasterSort(await filterMasterRowsClient(allRows, {
         taFilters,
         gradeFilter: '',
-        onProgress: ({ done, total }) => {
-          statusText.value = `技術分析篩選 ${done} / ${total}…`
+        concurrency,
+        onMatch: (row) => {
+          liveMatches.push(row)
+          const now = Date.now()
+          if (now - lastUi < 1000) return
+          lastUi = now
+          taFilteredRows.value = applyMasterSort([...liveMatches])
+          masterTotal.value = liveMatches.length
+          paginateClientFilteredRows(1)
+        },
+        onProgress: ({ done, total, matched }) => {
+          const label = fullMarket ? '全市場技術分析' : '技術分析篩選'
+          statusText.value = `${label} ${done.toLocaleString()} / ${total.toLocaleString()}… 符合 ${Number(matched || 0).toLocaleString()} 檔`
         },
       }))
       taFilteredRows.value = filtered
       masterTotal.value = filtered.length
-      clientFilterActive.value = true
       const page = Math.max(1, filters.page)
       paginateClientFilteredRows(page)
       return
@@ -948,7 +964,7 @@ onUnmounted(() => {
           <span class="ta-period-badge">日線</span>
           <h3>技術分析</h3>
         </div>
-        <p class="ta-hint muted">權證日線篩選；技術面僅針對<strong>目前搜尋結果</strong>，請先輸入標的或條件。</p>
+        <p class="ta-hint muted">權證日線篩選；可掃<strong>全市場</strong>（未填標的時）。勾選條件後按「搜尋權證」，掃描需較長時間。</p>
         <div class="ta-chip-row">
           <button
             type="button"
@@ -1100,7 +1116,7 @@ onUnmounted(() => {
             ← 返回搜尋條件
           </button>
           <div class="results-copy">
-            <h1 class="results-title">主檔搜尋結果</h1>
+            <h1 class="results-title">權證搜尋結果</h1>
             <p class="results-summary muted">{{ masterSearchSummary }}</p>
           </div>
         </div>
