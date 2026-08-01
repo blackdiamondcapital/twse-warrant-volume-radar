@@ -34,6 +34,7 @@ export function rowToDetailSheetRow(row) {
     收盤: row.close_price ?? '',
     成交量: row.volume ?? '',
     履約價: row.latest_exercise_price ?? '',
+    行使比例: row.latest_exercise_ratio ?? '',
     剩餘天數: row.days_to_expiry ?? '',
     到期日: row.expiry_date ?? '',
     發行量: row.issuance ?? '',

@@ -711,7 +711,9 @@ async function onExportHeat() {
     const { count, method } = await exportHeatToExcel(rankings.value, {
       tradeDate: selectedDate.value,
       onProgress: ({ phase, done, total }) => {
-        if (phase === 'grade') {
+        if (phase === 'master') {
+          statusText.value = `熱度 Excel：補齊主檔… ${done.toLocaleString()} / ${total.toLocaleString()} 檔`
+        } else if (phase === 'grade') {
           statusText.value = `熱度 Excel：評等計算中… ${done.toLocaleString()} / ${total.toLocaleString()} 檔`
         }
       },
