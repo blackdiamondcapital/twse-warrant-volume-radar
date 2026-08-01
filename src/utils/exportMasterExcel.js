@@ -89,7 +89,8 @@ export async function exportRowsToExcel(rows, {
   const mapper = compact ? rowToCompactSheetRow : rowToSheetRow
   const sheet = XLSX.utils.json_to_sheet(sorted.map(mapper))
   const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, sheet, sheetName)  const method = await downloadExcelFile(workbook, `${filenamePrefix}_${todayStamp()}.xlsx`)
+  XLSX.utils.book_append_sheet(workbook, sheet, sheetName)
+  const method = await downloadExcelFile(workbook, `${filenamePrefix}_${todayStamp()}.xlsx`)
   return { count: sorted.length, method }
 }
 
