@@ -122,7 +122,7 @@ function fmt(n, digits = 0) {
 }
 .underlying-name {
   font-size: 0.78rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

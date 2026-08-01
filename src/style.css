@@ -12,8 +12,9 @@
   --bg-surface: #0d1420;
   --line: rgba(0, 212, 255, 0.12);
   --line-strong: rgba(0, 212, 255, 0.28);
-  --text: #f0f4ff;
-  --text-dim: #8896aa;
+  --text: #f5f8ff;
+  --text-dim: #b4c0d4;
+  --text-muted: #9aacbf;
   --cyan: #00d4ff;
   --cyan-bright: #38bdf8;
   --amber: #60a5fa;
@@ -99,7 +100,7 @@ input:focus, select:focus {
   backdrop-filter: blur(14px);
 }
 
-.muted { color: var(--text-dim); }
+.muted { color: var(--text-muted); }
 .mono { font-variant-numeric: tabular-nums; }
 
 html.warrant-ta-fs,
@@ -154,7 +155,7 @@ table.data th {
   position: sticky;
   top: 0;
   background: #152033;
-  color: #d7e6f5;
+  color: #eaf2fb;
   font-weight: 600;
   letter-spacing: 0.01em;
   z-index: 1;

@@ -22,6 +22,10 @@ function buildSearchParams(filters, numOrUndef, page, pageSize) {
     closeMax: numOrUndef(filters.closeMax),
     exerciseMin: numOrUndef(filters.exerciseMin),
     exerciseMax: numOrUndef(filters.exerciseMax),
+    ratioMin: numOrUndef(filters.ratioMin),
+    ratioMax: numOrUndef(filters.ratioMax),
+    volumeMin: numOrUndef(filters.volumeMin),
+    volumeMax: numOrUndef(filters.volumeMax),
     daysMin: numOrUndef(filters.daysMin),
     daysMax: numOrUndef(filters.daysMax),
     sort: filters.sort || 'expiry',
@@ -39,15 +43,32 @@ function rowToSheetRow(row) {
     標的代號: row.underlying_code ?? '',
     標的名稱: row.underlying_name ?? '',
     市場: row.market ?? '',
+    K棒數: row.bar_count ?? '',
+    評等: row.warrant_grade ?? '',
+    '評等-成交量': row.grade_detail?.volume ?? '',
+    '評等-行使比': row.grade_detail?.ratio ?? '',
+    '評等-到期日': row.grade_detail?.expiry ?? '',
+    '評等-技術面': row.grade_detail?.technical ?? '',
     收盤: row.close_price ?? '',
     成交量: row.volume ?? '',
     履約價: row.latest_exercise_price ?? '',
     行使比: row.latest_exercise_ratio ?? '',
-    到期天數: row.days_to_expiry ?? '',
+    剩餘天數: row.days_to_expiry ?? '',
     到期日: row.expiry_date ?? '',
     發行量: row.issuance ?? '',
     最近成交日: row.latest_trade_date ?? '',
   }
+}
+
+export function exportRowsToExcel(rows, filenamePrefix = '權證主檔') {
+  if (!rows?.length) {
+    throw new Error('沒有符合條件的主檔可匯出')
+  }
+  const sheet = XLSX.utils.json_to_sheet(rows.map(rowToSheetRow))
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, sheet, '發行主檔')
+  XLSX.writeFile(workbook, `${filenamePrefix}_${todayStamp()}.xlsx`)
+  return rows.length
 }
 
 export async function fetchAllMasterRows(filters, numOrUndef, { onProgress } = {}) {
@@ -69,15 +90,9 @@ export async function fetchAllMasterRows(filters, numOrUndef, { onProgress } = {
   return allRows
 }
 
-export async function exportMasterToExcel(filters, numOrUndef, { onProgress } = {}) {
-  const rows = await fetchAllMasterRows(filters, numOrUndef, { onProgress })
-  if (!rows.length) {
-    throw new Error('沒有符合條件的主檔可匯出')
-  }
-
-  const sheet = XLSX.utils.json_to_sheet(rows.map(rowToSheetRow))
-  const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, sheet, '發行主檔')
-  XLSX.writeFile(workbook, `權證主檔_${todayStamp()}.xlsx`)
-  return rows.length
+export async function exportMasterToExcel(filters, numOrUndef, { onProgress, rows: presetRows } = {}) {
+  const rows = presetRows?.length
+    ? presetRows
+    : await fetchAllMasterRows(filters, numOrUndef, { onProgress })
+  return exportRowsToExcel(rows)
 }

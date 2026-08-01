@@ -16,8 +16,9 @@ import StockChartECharts from './components/StockChartECharts.vue'
 import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
 import { exportMasterToExcel, fetchAllMasterRows } from './utils/exportMasterExcel.js'
 import { exportHeatToExcel } from './utils/exportHeatExcel.js'
-import { filterMasterRowsByTa } from './utils/taScreenFilter.js'
+import { filterMasterRowsClient, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
 import { hasActiveTaFilters } from './lib/taScreenRules.js'
+import { WARRANT_GRADE_MATRIX, GRADE_DIMENSIONS } from './lib/warrantGrade.js'
 
 const {
   isAuthenticated,
@@ -67,16 +68,35 @@ const filters = reactive({
   closeMax: '',
   exerciseMin: '',
   exerciseMax: '',
+  ratioMin: '0.20',
+  ratioMax: '0.5',
+  volumeMin: '500',
+  volumeMax: '',
   daysMin: '',
   daysMax: '',
+  barsMin: '30',
   sort: 'expiry',
   sortDir: 'asc',
   page: 1,
   pageSize: 50,
 })
 
+const gradeMatrix = WARRANT_GRADE_MATRIX
+const gradeDimensions = GRADE_DIMENSIONS
+
+function sortRowsByGrade(rows) {
+  const order = { A: 0, B: 1, C: 2 }
+  return [...rows].sort((a, b) => {
+    const ga = order[a.warrant_grade] ?? 9
+    const gb = order[b.warrant_grade] ?? 9
+    if (ga !== gb) return ga - gb
+    return (b.bar_count ?? 0) - (a.bar_count ?? 0)
+  })
+}
+
 const taFilters = reactive({
   reversalFirstRed: false,
+  heikinFirstRed: false,
   ma5gtMa10: false,
   duoKongTrendFirstRed: false,
 })
@@ -84,6 +104,26 @@ const taFilters = reactive({
 const masterRows = ref([])
 const masterTotal = ref(0)
 const taFilteredRows = ref([])
+const clientFilterActive = ref(false)
+
+function usesClientSideMasterResults() {
+  return clientFilterActive.value
+}
+
+function clientFilterStatusLabel(filteredCount, page) {
+  const barsMin = numOrUndef(filters.barsMin)
+  const parts = []
+  if (barsMin) parts.push(`K棒≥${barsMin}`)
+  if (hasActiveTaFilters(taFilters)) parts.push('技術')
+  const tag = parts.length ? parts.join('＋') : '篩選'
+  return `符合 ${filteredCount.toLocaleString()} 檔（${tag}＋基本面）· 第 ${page} 頁`
+}
+
+function paginateClientFilteredRows(page) {
+  const start = (page - 1) * filters.pageSize
+  masterRows.value = taFilteredRows.value.slice(start, start + filters.pageSize)
+  statusText.value = clientFilterStatusLabel(masterTotal.value, page)
+}
 const loadingMaster = ref(false)
 const masterScreenerOpen = ref(false)
 const showMasterResults = ref(false)
@@ -137,9 +177,13 @@ const masterSearchSummary = computed(() => {
   if (filters.type) parts.push(filters.type)
   const ta = []
   if (taFilters.reversalFirstRed) ta.push('小不點第一根紅')
+  if (taFilters.heikinFirstRed) ta.push('神奇K線第一根紅')
   if (taFilters.ma5gtMa10) ta.push('5均>10均')
   if (taFilters.duoKongTrendFirstRed) ta.push('多空趨勢線第一根紅')
   if (ta.length) parts.push(ta.join('＋'))
+  const barsMin = numOrUndef(filters.barsMin)
+  if (barsMin) parts.push(`K棒≥${barsMin}`)
+  if (ta.length || barsMin) parts.unshift('日線')
   return parts.length ? parts.join(' · ') : '全部未到期主檔'
 })
 
@@ -152,29 +196,37 @@ function numOrUndef(v) {
 async function loadMaster() {
   loadingMaster.value = true
   try {
-    if (hasActiveTaFilters(taFilters)) {
-      statusText.value = '主檔查詢中（含技術分析篩選）…'
+    const barsMin = numOrUndef(filters.barsMin)
+    if (needsClientSideMasterFilter(taFilters, barsMin)) {
+      statusText.value = '主檔查詢中（含日線篩選）…'
       const allRows = await fetchAllMasterRows(filters, numOrUndef, {
         onProgress: ({ loaded, total }) => {
           statusText.value = `載入主檔 ${loaded.toLocaleString()} / ${total.toLocaleString()}…`
         },
       })
-      statusText.value = `技術分析篩選中… 0 / ${allRows.length}`
-      const filtered = await filterMasterRowsByTa(allRows, taFilters, {
+      const label = barsMin && hasActiveTaFilters(taFilters)
+        ? '日線篩選'
+        : barsMin
+          ? 'K 棒數篩選'
+          : '技術分析篩選'
+      statusText.value = `${label}中… 0 / ${allRows.length}`
+      const filtered = sortRowsByGrade(await filterMasterRowsClient(allRows, {
+        taFilters,
+        barsMin,
         onProgress: ({ done, total }) => {
-          statusText.value = `技術分析篩選 ${done} / ${total}…`
+          statusText.value = `${label} ${done} / ${total}…`
         },
-      })
+      }))
       taFilteredRows.value = filtered
       masterTotal.value = filtered.length
+      clientFilterActive.value = true
       const page = Math.max(1, filters.page)
-      const start = (page - 1) * filters.pageSize
-      masterRows.value = filtered.slice(start, start + filters.pageSize)
-      statusText.value = `符合 ${filtered.length.toLocaleString()} 檔（技術＋基本面）· 第 ${page} 頁`
+      paginateClientFilteredRows(page)
       return
     }
 
     taFilteredRows.value = []
+    clientFilterActive.value = false
     const data = await fetchMasterSearch({
       q: filters.q || undefined,
       market: filters.market,
@@ -185,6 +237,10 @@ async function loadMaster() {
       closeMax: numOrUndef(filters.closeMax),
       exerciseMin: numOrUndef(filters.exerciseMin),
       exerciseMax: numOrUndef(filters.exerciseMax),
+      ratioMin: numOrUndef(filters.ratioMin),
+      ratioMax: numOrUndef(filters.ratioMax),
+      volumeMin: numOrUndef(filters.volumeMin),
+      volumeMax: numOrUndef(filters.volumeMax),
       daysMin: numOrUndef(filters.daysMin),
       daysMax: numOrUndef(filters.daysMax),
       sort: filters.sort,
@@ -380,7 +436,9 @@ async function onExportMaster() {
   exportingMaster.value = true
   statusText.value = '正在準備 Excel…'
   try {
+    const presetRows = clientFilterActive.value ? taFilteredRows.value : null
     const count = await exportMasterToExcel(filters, numOrUndef, {
+      rows: presetRows || undefined,
       onProgress: ({ loaded, total }) => {
         statusText.value = `匯出中… ${loaded.toLocaleString()} / ${total.toLocaleString()} 檔`
       },
@@ -423,8 +481,10 @@ function toggleTaFilter(key) {
 
 function clearTechnicalFilters() {
   taFilters.reversalFirstRed = false
+  taFilters.heikinFirstRed = false
   taFilters.ma5gtMa10 = false
   taFilters.duoKongTrendFirstRed = false
+  filters.barsMin = '30'
   filters.page = 1
   loadMaster()
 }
@@ -436,18 +496,20 @@ function clearFundamentalFilters() {
   filters.closeMax = ''
   filters.exerciseMin = ''
   filters.exerciseMax = ''
+  filters.ratioMin = '0.20'
+  filters.ratioMax = '0.5'
+  filters.volumeMin = '500'
+  filters.volumeMax = ''
   filters.daysMin = ''
   filters.daysMax = ''
   filters.page = 1
-  loadMaster()
+  if (showMasterResults.value) loadMaster()
 }
 
 function onPage(p) {
   filters.page = p
-  if (hasActiveTaFilters(taFilters) && taFilteredRows.value.length) {
-    const start = (p - 1) * filters.pageSize
-    masterRows.value = taFilteredRows.value.slice(start, start + filters.pageSize)
-    statusText.value = `符合 ${masterTotal.value.toLocaleString()} 檔（技術＋基本面）· 第 ${p} 頁`
+  if (usesClientSideMasterResults()) {
+    paginateClientFilteredRows(p)
     return
   }
   loadMaster()
@@ -581,8 +643,20 @@ onMounted(async () => {
             <span class="sep">–</span>
             <input v-model="filters.exerciseMax" type="number" step="any" min="0" placeholder="高" />
           </div>
+          <div class="range-field range-field--ratio">
+            <label>行使比</label>
+            <input v-model="filters.ratioMin" type="number" step="0.001" min="0" placeholder="低" />
+            <span class="sep">–</span>
+            <input v-model="filters.ratioMax" type="number" step="0.001" min="0" placeholder="高" />
+          </div>
+          <div class="range-field range-field--volume">
+            <label>成交量</label>
+            <input v-model="filters.volumeMin" type="number" step="1" min="0" placeholder="低" />
+            <span class="sep">–</span>
+            <input v-model="filters.volumeMax" type="number" step="1" min="0" placeholder="高" />
+          </div>
           <div class="range-field">
-            <label>天數</label>
+            <label>剩餘天數</label>
             <input v-model="filters.daysMin" type="number" step="1" min="0" placeholder="低" />
             <span class="sep">–</span>
             <input v-model="filters.daysMax" type="number" step="1" min="0" placeholder="高" />
@@ -597,8 +671,24 @@ onMounted(async () => {
       </div>
 
       <div class="fund-block ta-block">
-        <div class="fund-head">
+        <div class="fund-head ta-head">
           <h3>技術分析</h3>
+          <span class="ta-period-badge">日線</span>
+        </div>
+        <p class="ta-hint muted">權證日線篩選；小不點參數依資料長度自動調整</p>
+        <div class="ta-bars-field">
+          <label for="bars-min">K 棒數 ≥</label>
+          <input
+            id="bars-min"
+            v-model="filters.barsMin"
+            type="number"
+            step="1"
+            min="1"
+            max="750"
+            placeholder="30"
+            inputmode="numeric"
+          />
+          <span class="ta-bars-hint muted">逐檔查日線根數（目前資料最多約 50 根）</span>
         </div>
         <div class="ta-chip-row">
           <button
@@ -607,6 +697,12 @@ onMounted(async () => {
             :class="{ active: taFilters.reversalFirstRed }"
             @click="toggleTaFilter('reversalFirstRed')"
           >小不點第一根紅</button>
+          <button
+            type="button"
+            class="chip-btn"
+            :class="{ active: taFilters.heikinFirstRed }"
+            @click="toggleTaFilter('heikinFirstRed')"
+          >神奇K線第一根紅</button>
           <button
             type="button"
             class="chip-btn"
@@ -620,12 +716,35 @@ onMounted(async () => {
             @click="toggleTaFilter('duoKongTrendFirstRed')"
           >多空趨勢線第一根紅</button>
           <button
-            v-if="taFilters.reversalFirstRed || taFilters.ma5gtMa10 || taFilters.duoKongTrendFirstRed"
+            v-if="taFilters.reversalFirstRed || taFilters.heikinFirstRed || taFilters.ma5gtMa10 || taFilters.duoKongTrendFirstRed || filters.barsMin"
             type="button"
             class="chip-clear"
             @click="clearTechnicalFilters"
           >清除技術條件</button>
         </div>
+        <details class="grade-criteria">
+          <summary>A / B / C 評等標準（成交量 · 行使比 · 到期日 · 技術面）</summary>
+          <div class="grade-matrix-wrap">
+            <table class="grade-matrix">
+              <thead>
+                <tr>
+                  <th>項目</th>
+                  <th>A 級</th>
+                  <th>B 級</th>
+                  <th>C 級</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="dim in gradeDimensions" :key="dim.key">
+                  <th>{{ dim.label }}</th>
+                  <td>{{ gradeMatrix.A[dim.key] }}</td>
+                  <td>{{ gradeMatrix.B[dim.key] }}</td>
+                  <td>{{ gradeMatrix.C[dim.key] }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
       </div>
 
       <div class="actions">
@@ -642,6 +761,26 @@ onMounted(async () => {
         </button>
       </div>
     </section>
+
+    <div class="workspace">
+      <MasterScreener
+        :rows="masterRows"
+        :total="masterTotal"
+        :stats-total="stats?.total_master || 0"
+        :page="filters.page"
+        :page-size="filters.pageSize"
+        :loading="loadingMaster"
+        :exporting="exportingMaster"
+        :selected-code="selected?.warrant_code || ''"
+        :open="masterScreenerOpen"
+        :show-bar-count="usesClientSideMasterResults()"
+        :show-grade="usesClientSideMasterResults()"
+        @select="selectMasterWarrant"
+        @page="onPage"
+        @toggle="toggleMasterScreener"
+        @export="onExportMaster"
+      />
+    </div>
 
     <section class="heat-section">
       <div class="heat-head-row panel">
@@ -740,6 +879,8 @@ onMounted(async () => {
           :exporting="exportingMaster"
           :selected-code="selected?.warrant_code || ''"
           :open="true"
+          :show-bar-count="usesClientSideMasterResults()"
+          :show-grade="usesClientSideMasterResults()"
           @select="selectMasterWarrant"
           @page="onPage"
           @export="onExportMaster"
@@ -778,7 +919,7 @@ onMounted(async () => {
   margin-bottom: 0.85rem;
 }
 .home-link {
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-size: 0.86rem;
   text-decoration: none;
 }
@@ -923,8 +1064,8 @@ onMounted(async () => {
 .filters label {
   display: block;
   margin-bottom: 0.35rem;
-  color: var(--text-dim);
-  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
 }
 .heat-section {
   display: grid;
@@ -1010,8 +1151,8 @@ onMounted(async () => {
 }
 .heat-row-label {
   flex-shrink: 0;
-  color: var(--text-dim);
-  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
   min-width: 2rem;
 }
 .chip-scroll {
@@ -1034,10 +1175,10 @@ onMounted(async () => {
 .chip-btn {
   border: 1px solid var(--line);
   background: rgba(7, 11, 20, 0.55);
-  color: var(--text-dim);
+  color: var(--text-muted);
   border-radius: 999px;
   padding: 0.24rem 0.62rem;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
@@ -1109,13 +1250,13 @@ onMounted(async () => {
 }
 .range-field label {
   margin: 0;
-  color: var(--text-dim);
-  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-size: 0.84rem;
   white-space: nowrap;
 }
 .range-field .sep {
-  color: #8fa3b3;
-  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-size: 0.82rem;
   line-height: 1;
   user-select: none;
 }
@@ -1125,9 +1266,14 @@ onMounted(async () => {
   padding: 0.32rem 0.42rem;
   font-size: 0.86rem;
   border-radius: 6px;
+  color: var(--text);
 }
-.range-field--exercise input {
+.range-field--exercise input,
+.range-field--ratio input {
   width: 5.85rem;
+}
+.range-field--volume input {
+  width: 5.2rem;
 }
 .range-field--date input {
   width: 8.1rem;
@@ -1142,6 +1288,92 @@ onMounted(async () => {
   align-items: center;
   gap: 0.35rem 0.75rem;
 }
+.ta-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.ta-period-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  color: var(--cyan-bright, #38bdf8);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.1);
+}
+.ta-hint {
+  flex: 1 1 100%;
+  margin: -0.15rem 0 0.1rem;
+  font-size: 0.76rem;
+}
+.ta-bars-field {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
+  margin: 0.05rem 0 0.15rem;
+}
+.ta-bars-field label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.ta-bars-field input {
+  width: 5rem;
+  padding: 0.28rem 0.45rem;
+  font-size: 0.84rem;
+}
+.ta-bars-hint {
+  font-size: 0.74rem;
+}
+.grade-criteria {
+  flex: 1 1 100%;
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.grade-criteria summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  user-select: none;
+}
+.grade-criteria summary:hover {
+  color: var(--cyan-bright, #38bdf8);
+}
+.grade-matrix-wrap {
+  overflow-x: auto;
+  margin-top: 0.55rem;
+}
+.grade-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+.grade-matrix th,
+.grade-matrix td {
+  border: 1px solid rgba(148, 183, 205, 0.16);
+  padding: 0.42rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+}
+.grade-matrix thead th {
+  background: rgba(7, 11, 20, 0.65);
+  color: var(--text);
+  font-weight: 650;
+}
+.grade-matrix tbody th {
+  background: rgba(7, 11, 20, 0.45);
+  color: var(--text-dim);
+  white-space: nowrap;
+  width: 7.5rem;
+}
+.grade-matrix tbody td:nth-child(2) { color: #fcd34d; }
+.grade-matrix tbody td:nth-child(3) { color: #7dd3fc; }
+.grade-matrix tbody td:nth-child(4) { color: rgba(226, 232, 240, 0.75); }
 .ta-chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -1153,7 +1385,7 @@ onMounted(async () => {
 .ta-chip-row .chip-btn {
   border: 1px solid var(--line);
   background: rgba(7, 11, 20, 0.55);
-  color: var(--text-dim);
+  color: var(--text-muted);
   border-radius: 999px;
   padding: 0.28rem 0.72rem;
   font-size: 0.82rem;

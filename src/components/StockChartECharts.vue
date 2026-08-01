@@ -6,6 +6,10 @@ import { useAuth } from '../stores/auth'
 import { resolveUserAccess, LITE_FREE_PRO_UPGRADE_MESSAGE, canUseMagicKAndLadder, canUseProChartFeatures } from '../utils/planAccess.js'
 import { useWatchlistSpeechRecognition, extractStockCodesFromSpeech, preprocessSpeechTranscriptForStock } from '../composables/useWatchlistSpeech.js'
 import { useQuadLayoutAvailable } from '../composables/useQuadLayoutAllowed.js'
+import {
+  DEFAULT_GOLDEN_WAVE_PARAMS,
+  resolveGoldenWaveParams,
+} from '../lib/taScreenRules.js'
 
 const pad2 = (n) => String(n).padStart(2, '0')
 function toIsoDateOnly(value) {
@@ -82,7 +86,7 @@ const warrantFsChips = computed(() => {
     { label: '收盤', value: warrantFmtNum(close, 2) },
     { label: '履約價', value: warrantFmtNum(d.latest_exercise_price, 2) },
     { label: '行使比', value: warrantFmtNum(d.latest_exercise_ratio, 4) },
-    { label: '到期天數', value: days != null ? String(days) : null },
+    { label: '剩餘天數', value: days != null ? String(days) : null },
     { label: '到期日', value: d.expiry_date || null },
     {
       label: '發行量',
@@ -2188,6 +2192,22 @@ function syncMobileCrosshairFromTouch(inst, dom, touch) {
     if (!coord || !Number.isFinite(coord.xIndex)) return false
     const axisValue = chartData.value?.[coord.xIndex]?.time
     if (axisValue == null) return false
+    if (useWarrantMobileCrosshair.value) {
+      scheduleHoverOverlayUpdate(coord.xIndex)
+      inst.dispatchAction({
+        type: 'updateAxisPointer',
+        currTrigger: 'touch',
+        x: offsetX,
+        y: offsetY,
+      })
+      inst.dispatchAction({
+        type: 'showTip',
+        seriesIndex: 0,
+        dataIndex: coord.xIndex,
+        position: [offsetX, offsetY],
+      })
+      return true
+    }
     mobilePinnedHoverIdx.value = coord.xIndex
     scheduleHoverOverlayUpdate(coord.xIndex)
     inst.dispatchAction({
@@ -2215,6 +2235,10 @@ function syncMobileCrosshairFromTouch(inst, dom, touch) {
 function clearMobileCrosshair(inst) {
   try {
     if (!inst) return
+    if (useWarrantMobileCrosshair.value) {
+      inst.dispatchAction({ type: 'hideTip' })
+      return
+    }
     if (klineCrosshairLookupEnabled.value && applyPinnedMobileTooltip(inst)) return
     inst.dispatchAction({ type: 'hideTip' })
   } catch (_) {}
@@ -2697,6 +2721,7 @@ function usePinnedMobileTooltip() {
 
 /** 手機查價改由主圖上方 Vue dock 呈現；勿用 suppressMobileTooltipDuringChartPanRef 關閉 dock，否則會退回 ECharts tooltip（y=24）與均線雙列圖例重疊。 */
 function shouldShowPinnedLookupAsideLayout() {
+  if (useWarrantMobileCrosshair.value) return false
   const len = Array.isArray(chartData.value) ? chartData.value.length : 0
   return !!(
     len > 0 &&
@@ -2710,6 +2735,7 @@ function shouldShowPinnedLookupAsideLayout() {
 
 /** 手機／全螢幕窄 UI：查價線模式只使用 Vue dock，停用 ECharts 內建 tooltip（避免雙列 HTML 卡與上方空白）。 */
 function shouldSuppressEchartsTooltipForMobileCrosshairDock() {
+  if (useWarrantMobileCrosshair.value) return false
   return !!(
     usePinnedMobileTooltip() &&
     klineCrosshairLookupEnabled.value &&
@@ -4077,6 +4103,11 @@ const goldenWaveParams = ref({
   barScale: 1
 })
 
+function goldenWaveDefaultParams() {
+  if (!isWarrantRadar.value) return DEFAULT_GOLDEN_WAVE_PARAMS
+  return resolveGoldenWaveParams(chartData.value?.length || 120)
+}
+
 function saveGoldenWaveParams() {
   const difW = Number(goldenWaveParams.value.difLineWidth)
   const ma2W = Number(goldenWaveParams.value.ma2LineWidth)
@@ -4139,15 +4170,16 @@ function resetGoldenWaveParams() {
   for (const k of keys) {
     try { localStorage.removeItem(`${k}${suffix}`) } catch (_) {}
   }
+  const gw = goldenWaveDefaultParams()
   Object.assign(goldenWaveParams.value, {
-    fastMa: 30,
-    slowMa: 100,
-    fastMa2: 130,
-    slowMa2: 140,
-    multiMa: 18,
-    waveMa2: 18,
-    waveMa3: 18,
-    boxPeriod: 78,
+    fastMa: gw.fastMa,
+    slowMa: gw.slowMa,
+    fastMa2: gw.fastMa2,
+    slowMa2: gw.slowMa2,
+    multiMa: gw.multiMa,
+    waveMa2: gw.waveMa2,
+    waveMa3: gw.waveMa3,
+    boxPeriod: gw.boxPeriod,
     showDifLine: true,
     showMa2Line: false,
     difLineColor: '#1e3a8a',
@@ -4259,8 +4291,36 @@ const showFullscreenCarouselControls = computed(() => {
 
 /** Mobile fullscreen (max-width 768px): toolbar collapse / expand */
 const showMobileFsToolbarCollapseUi = computed(() => isFullscreen.value && useMobileKlineDropdown.value)
+/** 權證雷達手機版：僅十字線查價，不用查價線 dock／導覽列 */
+const useWarrantMobileCrosshair = computed(() => isWarrantRadar.value && isMobileUi.value)
+
 /** 與貼底 tooltip／觸控十字線相同的版面：顯示十字線查價開關 */
-const showKlineCrosshairToggle = computed(() => isMobileViewport() || (isFullscreen.value && useMobileKlineDropdown.value))
+const showKlineCrosshairToggle = computed(() => {
+  if (useWarrantMobileCrosshair.value) return false
+  return isMobileViewport() || (isFullscreen.value && useMobileKlineDropdown.value)
+})
+
+const warrantLatestQuoteDisplay = computed(() => {
+  if (!useWarrantMobileCrosshair.value) return null
+  const data = chartData.value
+  if (!data?.length) return null
+  const row = data[data.length - 1]
+  const close = Number(row?.close)
+  const prevClose = data.length > 1 ? Number(data[data.length - 2]?.close) : null
+  let pctStr = ''
+  let pctUp = true
+  if (Number.isFinite(prevClose) && Number.isFinite(close) && prevClose !== 0) {
+    const pct = ((close - prevClose) / prevClose) * 100
+    pctStr = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`
+    pctUp = pct >= 0
+  }
+  return {
+    dateStr: row?.time != null ? String(row.time) : '—',
+    close: Number.isFinite(close) ? close.toFixed(2) : '—',
+    pctStr,
+    pctUp,
+  }
+})
 /** 與 renderChart 內 showMainArea 一致：有主圖區塊時才顯示查價導覽（疊在主圖 K 線區，非成交量副圖） */
 const showMainPlotForCrosshairNav = computed(() => {
   const reversalLines = showReversal.value && (showReversalUp.value || showReversalDown.value)
@@ -6182,14 +6242,15 @@ function loadParamsForCurrentPeriod() {
     try { localStorage.setItem(gwVersionKey, EXPECTED_GW_VERSION) } catch (_) {}
   }
 
-  goldenWaveParams.value.fastMa = parseInt(getWithFallback('chartGWFastMa', '30'))
-  goldenWaveParams.value.slowMa = parseInt(getWithFallback('chartGWSlowMa', '100'))
-  goldenWaveParams.value.fastMa2 = parseInt(getWithFallback('chartGWFastMa2', '130'))
-  goldenWaveParams.value.slowMa2 = parseInt(getWithFallback('chartGWSlowMa2', '140'))
-  goldenWaveParams.value.multiMa = parseInt(getWithFallback('chartGWMultiMa', '18'))
-  goldenWaveParams.value.waveMa2 = parseInt(getWithFallback('chartGWWaveMa2', '18'))
-  goldenWaveParams.value.waveMa3 = parseInt(getWithFallback('chartGWWaveMa3', '18'))
-  goldenWaveParams.value.boxPeriod = parseInt(getWithFallback('chartGWBoxPeriod', '78'))
+  const gwDefaults = goldenWaveDefaultParams()
+  goldenWaveParams.value.fastMa = parseInt(getWithFallback('chartGWFastMa', String(gwDefaults.fastMa)))
+  goldenWaveParams.value.slowMa = parseInt(getWithFallback('chartGWSlowMa', String(gwDefaults.slowMa)))
+  goldenWaveParams.value.fastMa2 = parseInt(getWithFallback('chartGWFastMa2', String(gwDefaults.fastMa2)))
+  goldenWaveParams.value.slowMa2 = parseInt(getWithFallback('chartGWSlowMa2', String(gwDefaults.slowMa2)))
+  goldenWaveParams.value.multiMa = parseInt(getWithFallback('chartGWMultiMa', String(gwDefaults.multiMa)))
+  goldenWaveParams.value.waveMa2 = parseInt(getWithFallback('chartGWWaveMa2', String(gwDefaults.waveMa2)))
+  goldenWaveParams.value.waveMa3 = parseInt(getWithFallback('chartGWWaveMa3', String(gwDefaults.waveMa3)))
+  goldenWaveParams.value.boxPeriod = parseInt(getWithFallback('chartGWBoxPeriod', String(gwDefaults.boxPeriod)))
   goldenWaveParams.value.showDifLine = getWithFallback('chartGWShowDifLine', 'true') !== 'false'
   goldenWaveParams.value.showMa2Line = getWithFallback('chartGWShowMa2Line', 'false') === 'true'
   goldenWaveParams.value.difLineColor = getWithFallback('chartGWDifLineColor', '#1e3a8a')
@@ -11666,6 +11727,28 @@ watch(isWarrantRadar, (warrant) => {
   }
 }, { immediate: true })
 
+watch(
+  () => [isWarrantRadar.value, chartData.value.length],
+  ([warrant, len]) => {
+    if (!warrant || !len) return
+    if (goldenWaveParams.value.slowMa2 < len) return
+    const gw = resolveGoldenWaveParams(len)
+    goldenWaveParams.value.fastMa = gw.fastMa
+    goldenWaveParams.value.slowMa = gw.slowMa
+    goldenWaveParams.value.fastMa2 = gw.fastMa2
+    goldenWaveParams.value.slowMa2 = gw.slowMa2
+    goldenWaveParams.value.multiMa = gw.multiMa
+    goldenWaveParams.value.waveMa2 = gw.waveMa2
+    goldenWaveParams.value.waveMa3 = gw.waveMa3
+    goldenWaveParams.value.boxPeriod = Math.min(gw.boxPeriod, Math.max(20, len - 5))
+    if (!loading.value) {
+      nextTick(() => {
+        try { renderChart() } catch (_) {}
+      })
+    }
+  },
+)
+
 // Watch for data changes and render chart
 watch(() => [chartData.value.length, loading.value], async ([newLen, isLoading]) => {
   if (!newLen) mobilePinnedHoverIdx.value = null
@@ -11996,6 +12079,22 @@ onUnmounted(() => {
               @blur="applyDesiredKCount"
             />
             <button class="stepper-btn" type="button" @click="incrementKCount" title="增加根數">＋</button>
+          </div>
+          <div
+            v-if="warrantLatestQuoteDisplay"
+            class="warrant-latest-quote-bar"
+            aria-live="polite"
+          >
+            <span class="warrant-latest-quote-bar__date">{{ warrantLatestQuoteDisplay.dateStr }}</span>
+            <span class="warrant-latest-quote-bar__close">{{ warrantLatestQuoteDisplay.close }}</span>
+            <span
+              v-if="warrantLatestQuoteDisplay.pctStr"
+              class="warrant-latest-quote-bar__pct"
+              :class="warrantLatestQuoteDisplay.pctUp ? 'is-up' : 'is-down'"
+            >{{ warrantLatestQuoteDisplay.pctStr }}</span>
+          </div>
+          <div v-if="isWarrantRadar" class="period-chips-scroll warrant-period-chip-wrap">
+            <span class="period-chip active warrant-period-chip">日線</span>
           </div>
           <div v-if="!isWarrantRadar" class="period-chips-scroll">
             <button
@@ -12595,7 +12694,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div
-          v-if="klineCrosshairLookupEnabled && !drawingMode && chartData.length && !loading && showMainPlotForCrosshairNav"
+          v-if="klineCrosshairLookupEnabled && !useWarrantMobileCrosshair && !drawingMode && chartData.length && !loading && showMainPlotForCrosshairNav"
           ref="crosshairLookupNavEl"
           class="crosshair-lookup-nav"
           :class="{ 'is-collapsed': crosshairLookupNavCollapsed, 'is-dragging': crosshairLookupNavDrag.active }"
@@ -14679,6 +14778,21 @@ onUnmounted(() => {
   transform: translateY(-2px);
 }
 
+.warrant-period-chip-wrap {
+  flex: 0 0 auto;
+}
+.warrant-period-chip {
+  cursor: default;
+  pointer-events: none;
+  min-width: auto;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+}
+.warrant-period-chip:hover {
+  transform: none;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+}
+
 /* K線模式下拉 + 選用工具鈕（查價線） */
 .kline-mode-toggle {
   position: relative;
@@ -15624,6 +15738,44 @@ onUnmounted(() => {
   top: 50%;
   transform: translate(-50%, -50%);
 }
+
+.warrant-latest-quote-bar {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.28rem 0.42rem;
+  margin-left: auto;
+  padding: 0.28rem 0.55rem;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(100, 200, 255, 0.22);
+  font-size: 0.74rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+.warrant-latest-quote-bar__date {
+  color: rgba(226, 232, 240, 0.88);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.warrant-latest-quote-bar__close {
+  color: #f8fafc;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.warrant-latest-quote-bar__close::before {
+  content: '收 ';
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: rgba(148, 163, 184, 0.92);
+}
+.warrant-latest-quote-bar__pct {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.warrant-latest-quote-bar__pct.is-up { color: #f87171; }
+.warrant-latest-quote-bar__pct.is-down { color: #4ade80; }
 
 .mobile-pinned-lookup-aside {
   position: relative;

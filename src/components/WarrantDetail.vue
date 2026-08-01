@@ -43,7 +43,7 @@ const metrics = computed(() => {
     { label: '收盤', value: fmt(d.latest_close_price) },
     { label: '履約價', value: fmt(d.latest_exercise_price) },
     { label: '行使比例', value: fmt(d.latest_exercise_ratio) },
-    { label: '到期天數', value: daysToExpiry.value != null ? String(daysToExpiry.value) : null },
+    { label: '剩餘天數', value: daysToExpiry.value != null ? String(daysToExpiry.value) : null },
     { label: '到期日', value: d.expiry_date || null },
   ].filter((m) => m.value != null && m.value !== '')
 })

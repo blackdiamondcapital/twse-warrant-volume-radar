@@ -14,6 +14,10 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   /** 搜尋結果頁：固定展開、不可收合 */
   resultsMode: { type: Boolean, default: false },
+  /** 日線篩選結果：顯示 K 棒數欄 */
+  showBarCount: { type: Boolean, default: false },
+  /** 日線篩選結果：顯示 A/B/C 評等 */
+  showGrade: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['select', 'page', 'toggle', 'export'])
@@ -33,17 +37,30 @@ const countLabel = computed(() => {
 
 const panelOpen = computed(() => props.resultsMode || props.open)
 
-const columns = [
-  { key: 'code', label: '代號' },
-  { key: 'name', label: '名稱' },
-  { key: 'underlying', label: '標的' },
-  { key: 'close', label: '收盤', align: 'num' },
-  { key: 'volume', label: '成交量', align: 'num' },
-  { key: 'exercise', label: '履約價', align: 'num' },
-  { key: 'days', label: '到期天數', align: 'num' },
-  { key: 'ratio', label: '行使比', align: 'num' },
-  { key: 'expiry', label: '到期日' },
-]
+const columns = computed(() => {
+  const base = [
+    { key: 'code', label: '代號' },
+  ]
+  if (props.showGrade) {
+    base.push({ key: 'grade', label: '評等', align: 'num' })
+  }
+  base.push(
+    { key: 'name', label: '名稱' },
+    { key: 'underlying', label: '標的' },
+  )
+  if (props.showBarCount) {
+    base.push({ key: 'bars', label: 'K棒數', align: 'num' })
+  }
+  base.push(
+    { key: 'close', label: '收盤', align: 'num' },
+    { key: 'volume', label: '成交量', align: 'num' },
+    { key: 'exercise', label: '履約價', align: 'num' },
+    { key: 'days', label: '剩餘天數', align: 'num' },
+    { key: 'ratio', label: '行使比', align: 'num' },
+    { key: 'expiry', label: '到期日' },
+  )
+  return base
+})
 
 const pageCount = computed(() => Math.max(1, Math.ceil((props.total || 0) / props.pageSize)))
 
@@ -57,6 +74,19 @@ function daysClass(days) {
   if (days <= 7) return 'days-urgent'
   if (days <= 30) return 'days-soon'
   return ''
+}
+
+function gradeTitle(row) {
+  const d = row?.grade_detail
+  if (!d) return ''
+  return `成交量 ${d.volume} · 行使比 ${d.ratio} · ${d.expiry} · 技術面 ${d.technical}`
+}
+
+function gradeClass(grade) {
+  if (grade === 'A') return 'grade-badge grade-badge--a'
+  if (grade === 'B') return 'grade-badge grade-badge--b'
+  if (grade === 'C') return 'grade-badge grade-badge--c'
+  return 'grade-badge grade-badge--none'
 }
 </script>
 
@@ -110,6 +140,14 @@ function daysClass(days) {
               @click="emit('select', row)"
             >
               <td class="mono">{{ row.warrant_code }}</td>
+              <td v-if="showGrade" class="num">
+                <span
+                  v-if="row.warrant_grade"
+                  :class="gradeClass(row.warrant_grade)"
+                  :title="gradeTitle(row)"
+                >{{ row.warrant_grade }}</span>
+                <span v-else class="grade-badge grade-badge--none">—</span>
+              </td>
               <td>{{ row.warrant_name }}</td>
               <td class="underlying">
                 <span v-if="row.underlying_code" class="mono code">{{ row.underlying_code }}</span>
@@ -120,6 +158,7 @@ function daysClass(days) {
                 >{{ warrantTypeLabel(row) }}</span>
                 <span class="underlying-name">{{ row.underlying_name || '—' }}</span>
               </td>
+              <td v-if="showBarCount" class="num mono bars-cell">{{ row.bar_count ?? '—' }}</td>
               <td class="num mono">{{ fmt(row.close_price, 2) }}</td>
               <td class="num mono">{{ fmt(row.volume, 0) }}</td>
               <td class="num mono">{{ fmt(row.latest_exercise_price) }}</td>
@@ -224,6 +263,43 @@ function daysClass(days) {
   gap: 0.85rem;
   margin-top: 0.85rem;
 }
+.bars-cell {
+  color: var(--cyan-bright, #38bdf8);
+  font-weight: 650;
+}
+.grade-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.65rem;
+  padding: 0.1rem 0.42rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+.grade-badge--a {
+  color: #fef3c7;
+  background: rgba(245, 158, 11, 0.22);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+.grade-badge--b {
+  color: #bae6fd;
+  background: rgba(56, 189, 248, 0.16);
+  border: 1px solid rgba(56, 189, 248, 0.38);
+}
+.grade-badge--c {
+  color: rgba(226, 232, 240, 0.82);
+  background: rgba(148, 163, 184, 0.14);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+.grade-badge--none {
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  font-weight: 600;
+}
 .days-soon { color: #38bdf8; font-weight: 600; }
 .days-urgent { color: #ff6b6b; font-weight: 700; }
 .underlying {
@@ -239,7 +315,7 @@ function daysClass(days) {
 }
 .underlying-name {
   font-size: 0.82rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
 }
 .type-sub {
   font-size: 0.68rem;

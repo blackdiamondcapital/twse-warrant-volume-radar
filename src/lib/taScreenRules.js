@@ -1,110 +1,147 @@
 import { calcSMA, calcDuoKongTrend, mapBars } from './indicators'
 import { DEFAULT_DUO_KONG_TREND_PERIOD } from './chartTheme'
 
-/** 動態轉折（小不點）階梯線：上漲段 red、下跌段 green */
-export function calcReversalSegments(closes, boxSize = 0.5) {
+/** 對齊主站 StockChartECharts 動態轉折（小不點）預設參數 */
+export const DEFAULT_GOLDEN_WAVE_PARAMS = {
+  fastMa: 30,
+  slowMa: 100,
+  fastMa2: 130,
+  slowMa2: 140,
+  multiMa: 18,
+  waveMa2: 18,
+  waveMa3: 18,
+  boxPeriod: 78,
+}
+
+/** 權證日線資料較短（約 120 根）時使用，維持快慢均比例但縮短週期 */
+export const WARRANT_GOLDEN_WAVE_PARAMS = {
+  fastMa: 12,
+  slowMa: 40,
+  fastMa2: 50,
+  slowMa2: 55,
+  multiMa: 10,
+  waveMa2: 10,
+  waveMa3: 10,
+  boxPeriod: 45,
+}
+
+/** 依 K 線根數選擇小不點參數 */
+export function resolveGoldenWaveParams(barCount) {
+  const n = Number(barCount)
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_GOLDEN_WAVE_PARAMS
+  if (n >= 160) return DEFAULT_GOLDEN_WAVE_PARAMS
+  return WARRANT_GOLDEN_WAVE_PARAMS
+}
+
+function calcEMA(arr, period) {
+  const n = arr.length
+  const result = new Array(n).fill(null)
+  const k = 2 / (period + 1)
+  let ema = null
+  for (let i = 0; i < n; i++) {
+    const val = Number(arr[i])
+    if (!Number.isFinite(val)) continue
+    ema = ema == null ? val : val * k + ema * (1 - k)
+    result[i] = ema
+  }
+  return result
+}
+
+/** 動態轉折（小不點）／黃金波段 DIF 柱 */
+export function calcGoldenWave(closes, params = DEFAULT_GOLDEN_WAVE_PARAMS) {
   const n = closes.length
-  const red = new Array(n).fill(null)
-  const green = new Array(n).fill(null)
-  if (!n) return { red, green }
+  const dif = new Array(n).fill(null)
+  const difSub = new Array(n).fill(null)
+  if (!n) return { dif, difSub }
 
-  const quantize = (v) =>
-    typeof v === 'number' && Number.isFinite(v) ? Math.round(v / boxSize) * boxSize : null
+  const emaFast = calcEMA(closes, params.fastMa)
+  const emaSlow = calcEMA(closes, params.slowMa)
+  const emaFast2 = calcEMA(closes, params.fastMa2)
+  const emaSlow2 = calcEMA(closes, params.slowMa2)
 
-  let base = quantize(closes[0])
-  if (base == null) return { red, green }
-
-  let dir = 0
-  let color = null
-  let swingHigh = base
-  let swingLow = base
-  let bullThreshold = base
-  let bearThreshold = base
-  let started = false
-
-  for (let i = 1; i < n; i++) {
-    const currClose = closes[i]
-    if (!Number.isFinite(currClose)) continue
-    const c = quantize(currClose)
-    if (c == null) continue
-
-    if (!started) {
-      if (c === base) continue
-      dir = c > base ? 1 : -1
-      color = dir > 0 ? 'up' : 'down'
-      if (dir > 0) {
-        red[i - 1] = base
-        red[i] = c
-      } else {
-        green[i - 1] = base
-        green[i] = c
-      }
-      swingHigh = Math.max(base, c)
-      swingLow = Math.min(base, c)
-      bullThreshold = swingHigh
-      bearThreshold = swingLow
-      base = c
-      started = true
-      continue
-    }
-
-    if (dir > 0) {
-      if (c >= base) {
-        base = c
-        if (c > swingHigh) {
-          swingHigh = c
-          bullThreshold = swingHigh
-        }
-      } else {
-        base = c
-        if (c < swingLow) swingLow = c
-        bearThreshold = swingLow
-        if (c <= bearThreshold) {
-          dir = -1
-          color = 'down'
-        }
-      }
-    } else if (dir < 0) {
-      if (c <= base) {
-        base = c
-        if (c < swingLow) {
-          swingLow = c
-          bearThreshold = swingLow
-        }
-      } else {
-        base = c
-        if (c > swingHigh) {
-          swingHigh = c
-          bullThreshold = swingHigh
-        }
-        if (c >= bullThreshold) {
-          dir = 1
-          color = 'up'
-        }
-      }
-    }
-
-    if (color === 'up') red[i] = base
-    else if (color === 'down') green[i] = base
+  for (let i = 0; i < n; i++) {
+    const f = emaFast[i]
+    const s = emaSlow[i]
+    if (f != null && s != null) dif[i] = f - s
   }
 
-  return { red, green }
+  const difSlow = new Array(n).fill(null)
+  for (let i = 0; i < n; i++) {
+    const f2 = emaFast2[i]
+    const s2 = emaSlow2[i]
+    if (f2 != null && s2 != null) difSlow[i] = f2 - s2
+  }
+
+  for (let i = 0; i < n; i++) {
+    const d = dif[i]
+    const ds = difSlow[i]
+    if (d != null && ds != null) difSub[i] = Math.abs(d - ds)
+  }
+
+  return { dif, difSub }
 }
 
-function segmentAt(red, green, i) {
-  if (i < 0) return null
-  if (red[i] != null) return 'up'
-  if (green[i] != null) return 'down'
-  return null
+/** 小不點紅柱：DIF >= 0 且 DIFSub 較 3 根前放大（對齊圖表 barUpColor） */
+export function isGoldenWaveBarRed(difVal, difSubVal, difSubPrev3) {
+  const dif = Number(difVal)
+  if (!Number.isFinite(dif) || dif < 0) return false
+  const subNow = Number(difSubVal)
+  const subPrev3 = Number(difSubPrev3)
+  if (!Number.isFinite(subNow)) return false
+  if (!Number.isFinite(subPrev3)) return true
+  return subNow > subPrev3
 }
 
-/** 小不點：最新一根為紅（多頭段第一根） */
-export function isReversalFirstRed(closes) {
+function goldenWaveBarRedAt(gw, i) {
+  const subPrev3 = i >= 3 ? gw.difSub[i - 3] : null
+  return isGoldenWaveBarRed(gw.dif[i], gw.difSub[i], subPrev3)
+}
+
+/** 小不點：最新一根為紅柱，且前一根非紅柱 */
+export function isGoldenWaveFirstRed(closes, params = DEFAULT_GOLDEN_WAVE_PARAMS) {
   if (!closes?.length) return false
-  const { red, green } = calcReversalSegments(closes)
-  const i = closes.length - 1
+  const gw = calcGoldenWave(closes, params)
+  const i = gw.dif.length - 1
+  if (i < 0) return false
+  if (!goldenWaveBarRedAt(gw, i)) return false
+  if (i < 1) return true
+  return !goldenWaveBarRedAt(gw, i - 1)
+}
+
+export function buildHeikinAshi(bars) {
+  const ha = []
+  for (let i = 0; i < bars.length; i++) {
+    const open = Number(bars[i].open)
+    const high = Number(bars[i].high)
+    const low = Number(bars[i].low)
+    const close = Number(bars[i].close)
+    if (![open, high, low, close].every(Number.isFinite)) continue
+    const haClose = (open + high + low + close) / 4
+    const prev = ha[i - 1]
+    const prevHaOpen = prev ? prev.open : open
+    const prevHaClose = prev ? prev.close : close
+    const haOpen = (prevHaOpen + prevHaClose) / 2
+    ha.push({
+      open: haOpen,
+      close: haClose,
+      high: Math.max(high, haOpen, haClose),
+      low: Math.min(low, haOpen, haClose),
+    })
+  }
+  return ha
+}
+
+function isHeikinBarRed(candle) {
+  if (!candle) return false
+  return candle.close >= candle.open
+}
+
+/** 神奇 K 線：最新一根紅 K，前一根非紅 K */
+export function isHeikinFirstRed(bars) {
+  const ha = buildHeikinAshi(bars)
+  const i = ha.length - 1
   if (i < 1) return false
-  return segmentAt(red, green, i) === 'up' && segmentAt(red, green, i - 1) === 'down'
+  return isHeikinBarRed(ha[i]) && !isHeikinBarRed(ha[i - 1])
 }
 
 /** 多空趨勢線：斜率剛轉為上漲（第一根紅段） */
@@ -128,10 +165,15 @@ export function isMa5AboveMa10(closes) {
 }
 
 export function evaluateTaSignals(bars) {
-  const mapped = mapBars(bars)
-  const closes = mapped.map((b) => b.close).filter((v) => v != null)
+  const mapped = mapBars(bars).filter((b) => b.close != null)
+  const ohlcBars = mapped.filter(
+    (b) => b.open != null && b.high != null && b.low != null && b.close != null,
+  )
+  const closes = mapped.map((b) => b.close)
+  const gwParams = resolveGoldenWaveParams(closes.length)
   return {
-    reversalFirstRed: isReversalFirstRed(closes),
+    reversalFirstRed: isGoldenWaveFirstRed(closes, gwParams),
+    heikinFirstRed: isHeikinFirstRed(ohlcBars),
     ma5gtMa10: isMa5AboveMa10(closes),
     duoKongTrendFirstRed: isDuoKongTrendFirstRed(closes),
   }
@@ -140,11 +182,17 @@ export function evaluateTaSignals(bars) {
 export function passesTaFilters(signals, taFilters) {
   if (!taFilters) return true
   if (taFilters.reversalFirstRed && !signals.reversalFirstRed) return false
+  if (taFilters.heikinFirstRed && !signals.heikinFirstRed) return false
   if (taFilters.ma5gtMa10 && !signals.ma5gtMa10) return false
   if (taFilters.duoKongTrendFirstRed && !signals.duoKongTrendFirstRed) return false
   return true
 }
 
 export function hasActiveTaFilters(taFilters) {
-  return !!(taFilters?.reversalFirstRed || taFilters?.ma5gtMa10 || taFilters?.duoKongTrendFirstRed)
+  return !!(
+    taFilters?.reversalFirstRed
+    || taFilters?.heikinFirstRed
+    || taFilters?.ma5gtMa10
+    || taFilters?.duoKongTrendFirstRed
+  )
 }
