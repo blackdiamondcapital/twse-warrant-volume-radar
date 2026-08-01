@@ -24,10 +24,8 @@ export function isIndividualStockWarrant(row) {
 }
 
 export function isUnexpiredWarrant(row) {
-  if (row?.days_to_expiry != null && row.days_to_expiry !== '') {
-    const days = Number(row.days_to_expiry)
-    return Number.isFinite(days) && days >= 0
-  }
+  const days = resolveDaysToExpiry(row)
+  if (days != null) return days >= 0
   if (row?.expiry_date) {
     const t = Date.parse(String(row.expiry_date))
     if (Number.isFinite(t)) {
@@ -37,4 +35,22 @@ export function isUnexpiredWarrant(row) {
     }
   }
   return true
+}
+
+/** 剩餘天數：優先用欄位，否則由到期日計算（避免 API 回 null） */
+export function resolveDaysToExpiry(row) {
+  const fromField = row?.days_to_expiry
+  if (fromField != null && fromField !== '') {
+    const n = Number(fromField)
+    if (Number.isFinite(n)) return n
+  }
+  const exp = row?.expiry_date
+  if (!exp) return null
+  const m = String(exp).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return null
+  const expiry = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  expiry.setHours(0, 0, 0, 0)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Math.round((expiry.getTime() - today.getTime()) / 86400000)
 }

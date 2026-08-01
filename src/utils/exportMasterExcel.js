@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 import { fetchMasterSearch } from '../api'
-import { isIndividualStockWarrant, isUnexpiredWarrant, warrantTypeLabel } from './warrantDisplay'
+import { isIndividualStockWarrant, isUnexpiredWarrant, resolveDaysToExpiry, warrantTypeLabel } from './warrantDisplay'
 import { buildMasterSearchParams } from './masterSearchParams.js'
 import { downloadExcelFile } from './downloadExcel.js'
 import { enrichMasterRowsWithGrades } from './taScreenFilter.js'
@@ -35,7 +35,7 @@ export function rowToDetailSheetRow(row) {
     成交量: row.volume ?? '',
     履約價: row.latest_exercise_price ?? '',
     行使比例: row.latest_exercise_ratio ?? '',
-    剩餘天數: row.days_to_expiry ?? '',
+    剩餘天數: resolveDaysToExpiry(row) ?? '',
     到期日: row.expiry_date ?? '',
     發行量: row.issuance ?? '',
     最近成交日: row.latest_trade_date ?? '',

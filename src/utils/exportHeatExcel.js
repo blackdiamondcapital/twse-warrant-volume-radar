@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import { fetchMasterDetail } from '../api'
+import { resolveDaysToExpiry } from './warrantDisplay.js'
 import { rowToDetailSheetRow } from './exportMasterExcel.js'
 import { downloadExcelFile } from './downloadExcel.js'
 import { enrichMasterRowsWithGrades } from './taScreenFilter.js'
@@ -15,32 +16,23 @@ function todayStamp() {
   return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`
 }
 
-function calcDaysToExpiry(expiryDate) {
-  if (!expiryDate) return null
-  const t = Date.parse(String(expiryDate))
-  if (!Number.isFinite(t)) return null
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  return Math.round((t - today.getTime()) / 86400000)
-}
-
 function mergeMasterDetail(row, detail) {
   const d = detail || {}
   const expiry = d.expiry_date || row.expiry_date || ''
-  const days = d.days_to_expiry ?? row.days_to_expiry ?? calcDaysToExpiry(expiry)
-  return {
+  const merged = {
     ...row,
     underlying_code: row.underlying_code ?? d.underlying_code ?? '',
     underlying_name: row.underlying_name ?? d.underlying_name ?? '',
     latest_exercise_price: d.latest_exercise_price ?? d.original_exercise_price ?? row.latest_exercise_price ?? '',
     latest_exercise_ratio: d.latest_exercise_ratio ?? row.latest_exercise_ratio ?? '',
     expiry_date: expiry,
-    days_to_expiry: days ?? '',
     issuance: d.issuance_units_thousand ?? d.accumulated_issuance ?? d.issuance ?? row.issuance ?? '',
     latest_trade_date: row.trade_date ?? d.latest_trade_date ?? row.latest_trade_date ?? '',
     market: row.market ?? d.market ?? '',
     close_price: row.close_price ?? d.latest_close_price ?? d.close_price ?? '',
   }
+  merged.days_to_expiry = resolveDaysToExpiry(merged)
+  return merged
 }
 
 async function enrichHeatRowsFromMaster(rows, { onProgress } = {}) {
