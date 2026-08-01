@@ -33,6 +33,7 @@ export async function downloadExcelFile(workbook, filename) {
     try {
       const handle = await window.showSaveFilePicker({
         suggestedName: name,
+        startIn: 'desktop',
         types: [{
           description: 'Excel 活頁簿',
           accept: {
@@ -80,7 +81,7 @@ export async function downloadExcelFile(workbook, filename) {
 
 export function excelDownloadStatus(method, count) {
   const n = count != null ? `（${Number(count).toLocaleString()} 檔）` : ''
-  if (method === 'save-as') return `已儲存 Excel${n}（可選桌面等位置）`
+  if (method === 'save-as') return `已儲存 Excel${n}至您選擇的位置（預設開啟桌面）`
   if (method === 'share') return `請在分享選單選擇「儲存到檔案」${n}`
   if (method === 'open') return `已開啟 Excel${n}，請用瀏覽器選單儲存或分享`
   return `已下載 Excel${n}`
