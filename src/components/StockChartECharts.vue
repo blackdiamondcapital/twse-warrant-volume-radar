@@ -5112,6 +5112,7 @@ function syncFullscreenHost(el, active) {
     host.style.overflow = 'hidden'
     host.style.boxSizing = 'border-box'
     host.style.pointerEvents = 'auto'
+    host.style.opacity = '1'
     host.style.zIndex = '9998'
     host.style.background = '#0b1220'
     return

@@ -2045,6 +2045,13 @@ onUnmounted(() => {
   opacity: 0;
   pointer-events: none;
 }
+.chart-host:has(.stock-chart.is-fullscreen) {
+  opacity: 1;
+  pointer-events: auto;
+  width: 100vw;
+  height: 100vh;
+  overflow: visible;
+}
 .warrant-stock-chart {
   width: 1px;
   height: 1px;
