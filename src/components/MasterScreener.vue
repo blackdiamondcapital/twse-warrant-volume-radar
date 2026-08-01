@@ -48,8 +48,8 @@ const columns = computed(() => {
   )
   base.push(
     { key: 'close', label: '收盤', align: 'num' },
-    { key: 'volume', label: '成交量', shortLabel: '量', align: 'num' },
-    { key: 'exercise', label: '履約價', shortLabel: '履約', align: 'num' },
+    { key: 'volume', label: '成交量', shortLabel: '成交量', align: 'num' },
+    { key: 'exercise', label: '履約價', shortLabel: '履約價', align: 'num' },
     { key: 'days', label: '剩餘天數', shortLabel: '天數', align: 'num' },
     { key: 'expiry', label: '到期日', shortLabel: '到期' },
   )
@@ -168,7 +168,6 @@ function gradeClass(grade) {
                   class="tag type-sub"
                   :class="isPutWarrant(row) ? 'put' : 'call'"
                 >{{ warrantTypeLabel(row) }}</span>
-                <span class="underlying-name">{{ row.underlying_name || '—' }}</span>
               </td>
               <td class="num mono">{{ fmt(row.close_price, 2) }}</td>
               <td class="num mono">{{ fmt(row.volume, 0) }}</td>
@@ -345,10 +344,6 @@ function gradeClass(grade) {
 .underlying .code {
   font-size: 0.84rem;
   font-weight: 600;
-}
-.underlying-name {
-  font-size: 0.82rem;
-  color: var(--text-muted);
 }
 .type-sub {
   font-size: 0.68rem;

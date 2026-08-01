@@ -17,7 +17,7 @@ import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
 import { exportMasterToExcel, fetchAllMasterRows, fetchMasterRowsUpTo } from './utils/exportMasterExcel.js'
 import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
-import { filterMasterRowsClient, enrichMasterRowsWithGrades, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
+import { filterMasterRowsClient, enrichMasterRowsWithGrades, needsClientSideMasterFilter, clearMasterBarCache } from './utils/taScreenFilter.js'
 import { hasActiveTaFilters } from './lib/taScreenRules.js'
 import { WARRANT_GRADE_MATRIX, GRADE_DIMENSIONS, gradeApiPrefilters } from './lib/warrantGrade.js'
 import { getCarouselLimitForUser } from './utils/planAccess.js'
@@ -131,8 +131,11 @@ function setMasterSort(key) {
   }
   filters.page = 1
   if (clientFilterActive.value) {
+    stopCarouselTimer()
+    carouselPlaying.value = false
     taFilteredRows.value = applyMasterSort(taFilteredRows.value)
     paginateClientFilteredRows(1)
+    void syncMasterCarouselRows()
     return
   }
   if (showMasterResults.value) loadMaster()
@@ -411,7 +414,17 @@ async function loadMaster() {
     const scoped = hasSearchScope()
     const wantClientFilter = hasActiveTaFilters(taFilters) || gradeFilter.value
 
+    if (wantClientFilter && !scoped) {
+      statusText.value = '請先輸入標的／關鍵字或篩選條件（評等僅針對搜尋結果，不掃全市場）'
+      masterRows.value = []
+      masterTotal.value = 0
+      taFilteredRows.value = []
+      clientFilterActive.value = false
+      return
+    }
+
     if (needsClientSideMasterFilter(taFilters, gradeFilter.value, { scopedSearch: scoped })) {
+      clearMasterBarCache()
       statusText.value = gradeFilter.value
         ? `搜尋結果評等中（${gradeFilter.value} 級）…`
         : '搜尋結果技術分析中…'
@@ -444,10 +457,6 @@ async function loadMaster() {
       return
     }
 
-    if (wantClientFilter && !scoped) {
-      statusText.value = '請先輸入標的／關鍵字或篩選條件（評等僅針對搜尋結果，不掃全市場）'
-    }
-
     taFilteredRows.value = []
     clientFilterActive.value = false
     const data = await fetchMasterSearch({
@@ -466,7 +475,7 @@ async function loadMaster() {
       volumeMax: numOrUndef(filters.volumeMax),
       daysMin: numOrUndef(filters.daysMin),
       daysMax: numOrUndef(filters.daysMax),
-      sort: filters.sort,
+      sort: filters.sort === 'grade' ? 'expiry' : filters.sort,
       sortDir: filters.sortDir,
       page: filters.page,
       pageSize: filters.pageSize,
@@ -738,7 +747,9 @@ function toggleTaFilter(key) {
 function setGradeFilter(grade) {
   gradeFilter.value = gradeFilter.value === grade ? '' : grade
   filters.page = 1
-  if (showMasterResults.value) onSearch()
+  if (showMasterResults.value || hasSearchScope()) {
+    onSearch()
+  }
 }
 
 function clearTaFilters() {
@@ -1165,6 +1176,23 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <MasterScreener
+          results-mode
+          :rows="masterRows"
+          :total="masterTotal"
+          :stats-total="stats?.total_master || 0"
+          :page="filters.page"
+          :page-size="filters.pageSize"
+          :loading="loadingMaster"
+          :exporting="exportingMaster"
+          :selected-code="selected?.warrant_code || ''"
+          :open="true"
+          :show-grade="usesClientSideMasterResults()"
+          @select="selectMasterWarrant"
+          @page="onPage"
+          @export="onExportMaster"
+        />
+
         <div v-if="masterCarouselEnabled" class="carousel-bar panel carousel-bar--mobile">
           <div class="carousel-bar-main">
             <span class="carousel-indicator">
@@ -1192,23 +1220,6 @@ onUnmounted(() => {
             </button>
           </div>
         </div>
-
-        <MasterScreener
-          results-mode
-          :rows="masterRows"
-          :total="masterTotal"
-          :stats-total="stats?.total_master || 0"
-          :page="filters.page"
-          :page-size="filters.pageSize"
-          :loading="loadingMaster"
-          :exporting="exportingMaster"
-          :selected-code="selected?.warrant_code || ''"
-          :open="true"
-          :show-grade="usesClientSideMasterResults()"
-          @select="selectMasterWarrant"
-          @page="onPage"
-          @export="onExportMaster"
-        />
       </section>
     </template>
 
@@ -1887,11 +1898,9 @@ onUnmounted(() => {
     align-items: stretch;
   }
   .carousel-bar--mobile {
-    position: sticky;
-    bottom: 0.35rem;
-    z-index: 30;
-    margin-bottom: 0.25rem;
-    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.35);
+    position: relative;
+    margin-top: 0.15rem;
+    margin-bottom: 0.5rem;
   }
   .carousel-btns {
     justify-content: center;

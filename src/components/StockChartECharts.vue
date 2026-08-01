@@ -2193,6 +2193,7 @@ function syncMobileCrosshairFromTouch(inst, dom, touch) {
     const axisValue = chartData.value?.[coord.xIndex]?.time
     if (axisValue == null) return false
     if (useWarrantMobileCrosshair.value) {
+      mobilePinnedHoverIdx.value = coord.xIndex
       scheduleHoverOverlayUpdate(coord.xIndex)
       inst.dispatchAction({
         type: 'updateAxisPointer',
@@ -2232,11 +2233,30 @@ function syncMobileCrosshairFromTouch(inst, dom, touch) {
   }
 }
 
+function keepWarrantMobileCrosshair(inst) {
+  if (!inst || !useWarrantMobileCrosshair.value) return
+  const idx = mobilePinnedHoverIdx.value
+  if (idx == null) return
+  try {
+    inst.dispatchAction({
+      type: 'updateAxisPointer',
+      currTrigger: 'showTip',
+      seriesIndex: 0,
+      dataIndex: idx,
+    })
+    inst.dispatchAction({
+      type: 'showTip',
+      seriesIndex: 0,
+      dataIndex: idx,
+    })
+  } catch (_) {}
+}
+
 function clearMobileCrosshair(inst) {
   try {
     if (!inst) return
     if (useWarrantMobileCrosshair.value) {
-      inst.dispatchAction({ type: 'hideTip' })
+      keepWarrantMobileCrosshair(inst)
       return
     }
     if (klineCrosshairLookupEnabled.value && applyPinnedMobileTooltip(inst)) return
@@ -2502,7 +2522,15 @@ function syncChartInteractionBindings() {
       if (hadPanSuppress) {
         mobilePinnedHoverIdx.value = null
       }
-      clearMobileCrosshair(inst)
+      if (useWarrantMobileCrosshair.value) {
+        if (mobilePinnedHoverIdx.value != null) {
+          keepWarrantMobileCrosshair(inst)
+        } else {
+          try { inst.dispatchAction({ type: 'hideTip' }) } catch (_) {}
+        }
+      } else {
+        clearMobileCrosshair(inst)
+      }
     }
   }
 
@@ -4296,7 +4324,7 @@ const useWarrantMobileCrosshair = computed(() => isWarrantRadar.value && isMobil
 
 /** 與貼底 tooltip／觸控十字線相同的版面：顯示十字線查價開關 */
 const showKlineCrosshairToggle = computed(() => {
-  if (useWarrantMobileCrosshair.value) return false
+  if (useWarrantMobileCrosshair.value) return true
   return isMobileViewport() || (isFullscreen.value && useMobileKlineDropdown.value)
 })
 
@@ -4304,9 +4332,13 @@ const warrantLatestQuoteDisplay = computed(() => {
   if (!useWarrantMobileCrosshair.value) return null
   const data = chartData.value
   if (!data?.length) return null
-  const row = data[data.length - 1]
+  const pinned = mobilePinnedHoverIdx.value
+  const idx = pinned != null
+    ? Math.max(0, Math.min(data.length - 1, Number(pinned) || 0))
+    : data.length - 1
+  const row = data[idx]
   const close = Number(row?.close)
-  const prevClose = data.length > 1 ? Number(data[data.length - 2]?.close) : null
+  const prevClose = idx > 0 ? Number(data[idx - 1]?.close) : null
   let pctStr = ''
   let pctUp = true
   if (Number.isFinite(prevClose) && Number.isFinite(close) && prevClose !== 0) {
@@ -4315,6 +4347,7 @@ const warrantLatestQuoteDisplay = computed(() => {
     pctUp = pct >= 0
   }
   return {
+    pinned: pinned != null,
     dateStr: row?.time != null ? String(row.time) : '—',
     close: Number.isFinite(close) ? close.toFixed(2) : '—',
     pctStr,
@@ -12086,8 +12119,10 @@ onUnmounted(() => {
           <div
             v-if="warrantLatestQuoteDisplay"
             class="warrant-latest-quote-bar"
+            :class="{ 'is-pinned': warrantLatestQuoteDisplay.pinned }"
             aria-live="polite"
           >
+            <span v-if="warrantLatestQuoteDisplay.pinned" class="warrant-latest-quote-bar__tag">查價</span>
             <span class="warrant-latest-quote-bar__date">{{ warrantLatestQuoteDisplay.dateStr }}</span>
             <span class="warrant-latest-quote-bar__close">{{ warrantLatestQuoteDisplay.close }}</span>
             <span
@@ -15756,6 +15791,16 @@ onUnmounted(() => {
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
   min-width: 0;
+}
+.warrant-latest-quote-bar.is-pinned {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(14, 116, 144, 0.22);
+}
+.warrant-latest-quote-bar__tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #7dd3fc;
+  letter-spacing: 0.04em;
 }
 .warrant-latest-quote-bar__date {
   color: rgba(226, 232, 240, 0.88);
