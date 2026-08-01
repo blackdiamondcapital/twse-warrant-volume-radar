@@ -19,6 +19,10 @@ function buildSearchParams(filters, numOrUndef, page, pageSize) {
 }
 
 function rowToSheetRow(row) {
+  return rowToDetailSheetRow(row)
+}
+
+export function rowToDetailSheetRow(row) {
   return {
     權證代號: row.warrant_code ?? '',
     權證名稱: row.warrant_name ?? '',

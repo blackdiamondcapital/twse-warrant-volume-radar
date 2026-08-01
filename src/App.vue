@@ -712,7 +712,7 @@ async function onExportHeat() {
       tradeDate: selectedDate.value,
       onProgress: ({ phase, done, total }) => {
         if (phase === 'grade') {
-          statusText.value = `評等計算中… ${done.toLocaleString()} / ${total.toLocaleString()} 檔`
+          statusText.value = `熱度 Excel：評等計算中… ${done.toLocaleString()} / ${total.toLocaleString()} 檔`
         }
       },
     })
@@ -1016,6 +1016,7 @@ onUnmounted(() => {
         <button
           type="button"
           class="export-btn"
+          title="匯出目前熱度排行（最多 100 檔）含評等與完整欄位，可另存至桌面"
           :disabled="exportingHeat || loadingRankings || !rankings.length"
           @click.stop="onExportHeat"
         >
