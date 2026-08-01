@@ -66,9 +66,10 @@ const canExportExcel = computed(() => {
 
 const exportBtnTitle = computed(() => {
   if (canExportExcel.value) {
-    return props.total > 0
-      ? `匯出符合條件的 ${props.total.toLocaleString()} 檔`
-      : `依目前篩選匯出主檔（全市場約 ${props.statsTotal.toLocaleString()} 檔）`
+    if (props.total > 0) {
+      return `匯出符合條件的個股權證代號（${props.total.toLocaleString()} 檔，不含評等）`
+    }
+    return `匯出個股權證代號（不含指數類，不含評等；依目前篩選）`
   }
   return '沒有可匯出的資料'
 })

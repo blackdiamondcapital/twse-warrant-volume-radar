@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 import { fetchMasterSearch } from '../api'
-import { warrantTypeLabel } from './warrantDisplay'
+import { isIndividualStockWarrant, warrantTypeLabel } from './warrantDisplay'
 import { downloadExcelFile } from './downloadExcel.js'
 import { enrichMasterRowsWithGrades } from './taScreenFilter.js'
 
@@ -56,15 +56,41 @@ function rowToSheetRow(row) {
   }
 }
 
-export async function exportRowsToExcel(rows, filenamePrefix = '權證主檔') {
+function rowToCompactSheetRow(row) {
+  return {
+    標的代號: row.underlying_code ?? '',
+    標的名稱: row.underlying_name ?? '',
+    權證代號: row.warrant_code ?? '',
+    類型: warrantTypeLabel(row) ?? '',
+  }
+}
+
+function sortExportRows(rows) {
+  return [...rows].sort((a, b) => {
+    const ua = String(a.underlying_code || '')
+    const ub = String(b.underlying_code || '')
+    if (ua !== ub) return ua.localeCompare(ub, 'zh-Hant')
+    const ta = warrantTypeLabel(a) || ''
+    const tb = warrantTypeLabel(b) || ''
+    if (ta !== tb) return ta.localeCompare(tb, 'zh-Hant')
+    return String(a.warrant_code || '').localeCompare(String(b.warrant_code || ''))
+  })
+}
+
+export async function exportRowsToExcel(rows, {
+  filenamePrefix = '權證主檔',
+  sheetName = '發行主檔',
+  compact = false,
+} = {}) {
   if (!rows?.length) {
     throw new Error('沒有符合條件的主檔可匯出')
   }
-  const sheet = XLSX.utils.json_to_sheet(rows.map(rowToSheetRow))
+  const sorted = sortExportRows(rows)
+  const mapper = compact ? rowToCompactSheetRow : rowToSheetRow
+  const sheet = XLSX.utils.json_to_sheet(sorted.map(mapper))
   const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, sheet, '權證總覽')
-  const method = await downloadExcelFile(workbook, `${filenamePrefix}_${todayStamp()}.xlsx`)
-  return { count: rows.length, method }
+  XLSX.utils.book_append_sheet(workbook, sheet, sheetName)  const method = await downloadExcelFile(workbook, `${filenamePrefix}_${todayStamp()}.xlsx`)
+  return { count: sorted.length, method }
 }
 
 export async function fetchAllMasterRows(filters, numOrUndef, { onProgress } = {}) {
@@ -114,12 +140,37 @@ async function ensureRowsWithGrades(rows, onProgress) {
   })
 }
 
-export async function exportMasterToExcel(filters, numOrUndef, { onProgress, rows: presetRows } = {}) {
+function filterIndividualStockWarrants(rows) {
+  return rows.filter(isIndividualStockWarrant)
+}
+
+export async function exportMasterToExcel(filters, numOrUndef, {
+  onProgress,
+  rows: presetRows,
+  includeGrade = false,
+  compact = true,
+  individualStockOnly = true,
+} = {}) {
   let rows = presetRows?.length
     ? presetRows
     : await fetchAllMasterRows(filters, numOrUndef, {
       onProgress: ({ loaded, total }) => onProgress?.({ phase: 'load', loaded, total }),
     })
-  rows = await ensureRowsWithGrades(rows, onProgress)
-  return exportRowsToExcel(rows)
+
+  if (individualStockOnly) {
+    rows = filterIndividualStockWarrants(rows)
+  }
+  if (!rows.length) {
+    throw new Error(individualStockOnly ? '沒有符合條件的個股權證可匯出' : '沒有符合條件的主檔可匯出')
+  }
+
+  if (includeGrade) {
+    rows = await ensureRowsWithGrades(rows, onProgress)
+  }
+
+  return exportRowsToExcel(rows, {
+    filenamePrefix: compact ? '個股權證代號' : '權證主檔',
+    sheetName: compact ? '個股權證代號' : '發行主檔',
+    compact,
+  })
 }

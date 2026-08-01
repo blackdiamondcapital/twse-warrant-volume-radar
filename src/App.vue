@@ -693,10 +693,11 @@ async function onExportMaster() {
     }
     const { count, method } = await exportMasterToExcel(filters, numOrUndef, {
       rows: presetRows || undefined,
-      onProgress: ({ phase, loaded, total, done }) => {
-        if (phase === 'grade') {
-          statusText.value = `評等計算中… ${done.toLocaleString()} / ${total.toLocaleString()} 檔`
-        } else {
+      includeGrade: false,
+      compact: true,
+      individualStockOnly: true,
+      onProgress: ({ phase, loaded, total }) => {
+        if (phase === 'load') {
           statusText.value = `匯出中… ${loaded.toLocaleString()} / ${total.toLocaleString()} 檔`
         }
       },
