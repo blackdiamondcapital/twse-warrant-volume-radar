@@ -22,12 +22,33 @@ function canShareFile(blob, filename) {
 }
 
 /**
- * 跨平台下載 xlsx：桌機用 Blob + a[download]；手機優先 Web Share，否則新分頁開啟。
- * @returns {Promise<'download'|'share'|'open'>}
+ * 跨平台下載 xlsx：優先「另存新檔」可選桌面；否則 Blob 下載至瀏覽器預設資料夾。
+ * @returns {Promise<'save-as'|'download'|'share'|'open'>}
  */
 export async function downloadExcelFile(workbook, filename) {
   const name = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`
   const blob = workbookToBlob(workbook)
+
+  if (typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function') {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: name,
+        types: [{
+          description: 'Excel 活頁簿',
+          accept: {
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+          },
+        }],
+      })
+      const writable = await handle.createWritable()
+      await writable.write(blob)
+      await writable.close()
+      return 'save-as'
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err
+      /* 不支援或失敗時改走一般下載 */
+    }
+  }
 
   if (canShareFile(blob, name)) {
     const file = new File([blob], name, { type: XLSX_MIME })
@@ -59,6 +80,7 @@ export async function downloadExcelFile(workbook, filename) {
 
 export function excelDownloadStatus(method, count) {
   const n = count != null ? `（${Number(count).toLocaleString()} 檔）` : ''
+  if (method === 'save-as') return `已儲存 Excel${n}（可選桌面等位置）`
   if (method === 'share') return `請在分享選單選擇「儲存到檔案」${n}`
   if (method === 'open') return `已開啟 Excel${n}，請用瀏覽器選單儲存或分享`
   return `已下載 Excel${n}`
