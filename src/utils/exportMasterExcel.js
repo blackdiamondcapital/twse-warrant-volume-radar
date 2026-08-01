@@ -9,6 +9,7 @@ import {
   warrantTypeLabel,
 } from './warrantDisplay.js'
 import { buildMasterSearchParams } from './masterSearchParams.js'
+import { rowMatchesMasterQuery } from './masterSearchMatch.js'
 import { downloadExcelFile } from './downloadExcel.js'
 import { enrichMasterRowsWithGrades } from './taScreenFilter.js'
 
@@ -161,16 +162,17 @@ async function ensureRowsWithGrades(rows, onProgress) {
   })
 }
 
-function buildExportRowFilter({ individualStockOnly, unexpiredOnly }) {
+function buildExportRowFilter({ individualStockOnly, unexpiredOnly, q }) {
   return (row) => {
     if (individualStockOnly && !isIndividualStockWarrant(row)) return false
     if (unexpiredOnly && !isUnexpiredWarrant(row)) return false
+    if (!rowMatchesMasterQuery(row, q)) return false
     return true
   }
 }
 
-function applyExportRowFilters(rows, { individualStockOnly, unexpiredOnly }) {
-  const filter = buildExportRowFilter({ individualStockOnly, unexpiredOnly })
+function applyExportRowFilters(rows, { individualStockOnly, unexpiredOnly, q }) {
+  const filter = buildExportRowFilter({ individualStockOnly, unexpiredOnly, q })
   return rows.filter(filter)
 }
 
@@ -182,10 +184,18 @@ export async function exportMasterToExcel(filters, numOrUndef, {
   individualStockOnly = true,
   unexpiredOnly = true,
 } = {}) {
-  const rowFilter = buildExportRowFilter({ individualStockOnly, unexpiredOnly })
+  const rowFilter = buildExportRowFilter({
+    individualStockOnly,
+    unexpiredOnly,
+    q: filters?.q,
+  })
 
   let rows = presetRows?.length
-    ? applyExportRowFilters(presetRows, { individualStockOnly, unexpiredOnly })
+    ? applyExportRowFilters(presetRows, {
+      individualStockOnly,
+      unexpiredOnly,
+      q: filters?.q,
+    })
     : await fetchAllMasterRows(filters, numOrUndef, {
       onProgress: ({ loaded, total }) => onProgress?.({ phase: 'load', loaded, total }),
       rowFilter,

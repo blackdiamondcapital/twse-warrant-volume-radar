@@ -20,10 +20,12 @@ import { exportMasterToExcel, fetchMasterRowsUpTo } from './utils/exportMasterEx
 import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { buildMasterSearchParams } from './utils/masterSearchParams.js'
+import { filterMasterRowsByQuery, isCodeLikeMasterQuery } from './utils/masterSearchMatch.js'
 import { isUnexpiredWarrant } from './utils/warrantDisplay.js'
 import { enrichMasterRowsWithGrades, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
 import { hasActiveTaFilters } from './lib/taScreenRules.js'
 import { getCarouselLimitForUser } from './utils/planAccess.js'
+import { fetchMasterRowsUpTo } from './utils/exportMasterExcel.js'
 
 const {
   isAuthenticated,
@@ -403,6 +405,7 @@ async function loadMaster() {
   try {
     const scoped = hasSearchScope()
     const wantClientFilter = hasActiveTaFilters(taFilters)
+    const codeQuery = isCodeLikeMasterQuery(filters.q)
 
     if (needsClientSideMasterFilter(taFilters, '', { scopedSearch: scoped })) {
       const fullMarket = wantClientFilter && !scoped
@@ -419,15 +422,30 @@ async function loadMaster() {
         heikinFirstRed: taFilters.heikinFirstRed ? 1 : undefined,
         reversalFirstRed: taFilters.reversalFirstRed ? 1 : undefined,
       })
-      const rows = applyMasterSort(keepUnexpiredRows(data.data || []))
+      const rows = applyMasterSort(
+        filterMasterRowsByQuery(keepUnexpiredRows(data.data || []), filters.q),
+      )
       taFilteredRows.value = rows
-      masterTotal.value = Number(data.total) || rows.length
+      masterTotal.value = rows.length
       clientFilterActive.value = true
       const page = Math.max(1, filters.page)
       paginateClientFilteredRows(page)
       const sec = data.elapsedMs != null ? ` · ${(Number(data.elapsedMs) / 1000).toFixed(1)}s` : ''
       const scopeLabel = fullMarket ? '全市場' : '條件範圍'
       statusText.value = `${scopeLabel}技術篩選完成：符合 ${masterTotal.value.toLocaleString()} 檔（候選 ${Number(data.candidates || 0).toLocaleString()}）${sec}`
+      return
+    }
+
+    // 代號查詢：前端精確／前綴過濾，避免後端 %5274% 誤中 052745
+    if (codeQuery) {
+      statusText.value = '代號精確比對中…'
+      const raw = await fetchMasterRowsUpTo(filters, numOrUndef, 5000)
+      const rows = applyMasterSort(filterMasterRowsByQuery(keepUnexpiredRows(raw), filters.q))
+      taFilteredRows.value = rows
+      masterTotal.value = rows.length
+      clientFilterActive.value = true
+      paginateClientFilteredRows(Math.max(1, filters.page))
+      statusText.value = `代號「${String(filters.q).trim()}」精確符合 ${rows.length.toLocaleString()} 檔 · 第 ${filters.page} 頁`
       return
     }
 
