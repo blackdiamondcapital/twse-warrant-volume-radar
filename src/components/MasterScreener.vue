@@ -50,7 +50,7 @@ const columns = computed(() => {
     { key: 'close', label: '收盤', align: 'num' },
     { key: 'volume', label: '成交量', shortLabel: '成交量', align: 'num' },
     { key: 'exercise', label: '履約價', shortLabel: '履約價', align: 'num' },
-    { key: 'days', label: '剩餘天數', shortLabel: '天數', align: 'num' },
+    { key: 'days', label: '剩餘天數', shortLabel: '剩餘天數', align: 'num' },
     { key: 'expiry', label: '到期日', shortLabel: '到期' },
   )
   return base
@@ -138,7 +138,7 @@ function gradeClass(grade) {
               <th
                 v-for="col in columns"
                 :key="col.key"
-                :class="[col.align, col.key === 'expiry' ? 'cell-expiry' : '']"
+                :class="[col.align, col.key === 'expiry' ? 'cell-expiry' : '', col.key === 'days' ? 'cell-days' : '']"
               >
                 <span class="col-label-full">{{ col.label }}</span>
                 <span class="col-label-short">{{ col.shortLabel || col.label }}</span>
@@ -172,7 +172,7 @@ function gradeClass(grade) {
               <td class="num mono">{{ fmt(row.close_price, 2) }}</td>
               <td class="num mono">{{ fmt(row.volume, 0) }}</td>
               <td class="num mono">{{ fmt(row.latest_exercise_price) }}</td>
-              <td class="num mono" :class="daysClass(row.days_to_expiry)">
+              <td class="num mono cell-days" :class="daysClass(row.days_to_expiry)">
                 {{ row.days_to_expiry == null ? '—' : row.days_to_expiry }}
               </td>
               <td class="mono cell-expiry" :title="row.expiry_date || ''">
@@ -208,6 +208,13 @@ function gradeClass(grade) {
   max-width: 3.25rem;
   padding-left: 0.28rem;
   padding-right: 0.28rem;
+}
+.screener table.data th.cell-days,
+.screener table.data td.cell-days {
+  width: 1%;
+  white-space: nowrap;
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
 }
 .expiry-short { display: none; }
 .head-row {
@@ -377,6 +384,21 @@ function gradeClass(grade) {
     padding-right: 0.1rem;
     font-size: 0.62rem;
     letter-spacing: -0.03em;
+  }
+  .screener table.data th.cell-days,
+  .screener table.data td.cell-days {
+    max-width: 2.65rem;
+    padding-left: 0.08rem;
+    padding-right: 0.08rem;
+  }
+  .screener table.data th.cell-days .col-label-short {
+    font-size: 0.58rem;
+    letter-spacing: -0.04em;
+    white-space: nowrap;
+    line-height: 1.15;
+  }
+  .screener table.data td.cell-days {
+    font-size: 0.72rem;
   }
   .expiry-full { display: none; }
   .expiry-short { display: inline; }

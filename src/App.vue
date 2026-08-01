@@ -89,6 +89,7 @@ const MASTER_SORT_OPTIONS = [
   { key: 'expiry', label: '到期日' },
   { key: 'grade', label: '評等' },
   { key: 'volume', label: '成交量' },
+  { key: 'exercise', label: '履約價' },
   { key: 'days', label: '剩餘天數' },
   { key: 'close', label: '收盤' },
 ]
@@ -117,6 +118,9 @@ function applyMasterSort(rows) {
     }
     if (key === 'close') {
       return ((sortNum(a.close_price) ?? -1) - (sortNum(b.close_price) ?? -1)) * dir
+    }
+    if (key === 'exercise') {
+      return ((sortNum(a.latest_exercise_price) ?? -1) - (sortNum(b.latest_exercise_price) ?? -1)) * dir
     }
     return String(a.expiry_date || '').localeCompare(String(b.expiry_date || '')) * dir
   })
