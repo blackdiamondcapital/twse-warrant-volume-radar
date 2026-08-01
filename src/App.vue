@@ -25,7 +25,6 @@ import { isUnexpiredWarrant } from './utils/warrantDisplay.js'
 import { enrichMasterRowsWithGrades, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
 import { hasActiveTaFilters } from './lib/taScreenRules.js'
 import { getCarouselLimitForUser } from './utils/planAccess.js'
-import { fetchMasterRowsUpTo } from './utils/exportMasterExcel.js'
 
 const {
   isAuthenticated,
