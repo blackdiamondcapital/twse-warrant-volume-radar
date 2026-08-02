@@ -1032,13 +1032,13 @@ onUnmounted(() => {
           <span class="ta-period-badge">日線</span>
           <h3>技術分析</h3>
         </div>
-        <p class="ta-hint muted">權證日線篩選；可掃<strong>全市場</strong>（未填標的時）。黃金切割 0%／100%：收盤接近整段日線最高／最低點（與圖表一致）；剛站上多空線：最新收盤上穿 Hull 多空線（週期 77）。</p>
+        <p class="ta-hint muted">權證日線篩選；可掃<strong>全市場</strong>（未填標的時）。黃金切割 0%／100%：收盤接近整段日線最高／最低點（與圖表一致）；剛站上多空線：最新收盤上穿 Hull 多空線（週期 45）。</p>
         <div class="ta-chip-row">
           <button
             type="button"
             class="chip-btn"
             :class="{ active: taFilters.duoKongCrossUp }"
-            title="最新收盤站上多空線，且前一日收在線下或貼線"
+            title="最新收盤站上多空線（週期 45），且前一日收在線下或貼線"
             @click="toggleTaFilter('duoKongCrossUp')"
           >剛站上多空線</button>
           <button

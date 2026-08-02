@@ -1,5 +1,7 @@
 import { calcSMA, calcDuoKongLine, mapBars } from './indicators'
-import { DEFAULT_DUO_KONG_PERIOD } from './chartTheme.js'
+
+/** 選股「剛站上多空線」專用週期（與圖表預設 77 可不同） */
+export const TA_SCREEN_DUO_KONG_PERIOD = 45
 
 /** 對齊主站 StockChartECharts 動態轉折（小不點）預設參數 */
 export const DEFAULT_GOLDEN_WAVE_PARAMS = {
@@ -201,9 +203,9 @@ export function isMa5AboveMa10(closes) {
 }
 
 /**
- * 剛站上多空線：最新收盤 > 多空線，前一根收盤 <= 前一根多空線（週期對齊圖表預設 77）。
+ * 剛站上多空線：最新收盤 > 多空線，前一根收盤 <= 前一根多空線。
  */
-export function isDuoKongCrossUp(closes, period = DEFAULT_DUO_KONG_PERIOD) {
+export function isDuoKongCrossUp(closes, period = TA_SCREEN_DUO_KONG_PERIOD) {
   if (!closes?.length || closes.length < 2) return false
   const dk = calcDuoKongLine(closes, period)
   const i = closes.length - 1
