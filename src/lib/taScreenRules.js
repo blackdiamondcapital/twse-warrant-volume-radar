@@ -5,6 +5,7 @@ export const TA_SCREEN_DUO_KONG_PERIOD = 45
 
 /** 收盤價接近區間高低：容許誤差占振幅比例 */
 export const TA_CLOSE_RANGE_TOLERANCE = 0.015
+export const TA_CLOSE_RANGE_DAYS = 120
 
 /** 對齊主站 StockChartECharts 動態轉折（小不點）預設參數 */
 export const DEFAULT_GOLDEN_WAVE_PARAMS = {
@@ -176,7 +177,7 @@ function calcClosePriceRange(closes) {
   return { high, low, range: high - low }
 }
 
-/** 最新收盤價接近日線收盤價區間最高 */
+/** 最新收盤價接近日線收盤價區間最高（僅收盤價） */
 export function isCloseNearRangeHigh(closes, toleranceRatio = TA_CLOSE_RANGE_TOLERANCE) {
   const span = calcClosePriceRange(closes)
   if (!span) return false
@@ -187,7 +188,7 @@ export function isCloseNearRangeHigh(closes, toleranceRatio = TA_CLOSE_RANGE_TOL
   return Math.abs(close - span.high) <= tol
 }
 
-/** 最新收盤價接近日線收盤價區間最低 */
+/** 最新收盤價接近日線收盤價區間最低（僅收盤價） */
 export function isCloseNearRangeLow(closes, toleranceRatio = TA_CLOSE_RANGE_TOLERANCE) {
   const span = calcClosePriceRange(closes)
   if (!span) return false

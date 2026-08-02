@@ -1,10 +1,9 @@
 import { fetchTimeseries } from '../api'
-import { evaluateTaSignals, hasActiveTaFilters, passesTaFilters } from '../lib/taScreenRules'
+import { evaluateTaSignals, hasActiveTaFilters, passesTaFilters, TA_CLOSE_RANGE_DAYS } from '../lib/taScreenRules'
 import { gradeWarrant, buildGradeDetail } from '../lib/warrantGrade.js'
 
 const TIMESERIES_LIMIT_DAYS = 90
 const DUO_KONG_TIMESERIES_LIMIT_DAYS = 60
-const CLOSE_RANGE_TIMESERIES_LIMIT_DAYS = 120
 /** 全市場 client-side 技術掃描上限（依成交量排序） */
 export const TA_FULL_MARKET_SCAN_CAP = 600
 /** 有篩選條件時 client-side 技術掃描上限 */
@@ -85,7 +84,7 @@ export async function filterMasterRowsClient(
 
   let barLimit = timeseriesLimitDays ?? TIMESERIES_LIMIT_DAYS
   if (taFilters?.closeNearHigh || taFilters?.closeNearLow) {
-    barLimit = timeseriesLimitDays ?? CLOSE_RANGE_TIMESERIES_LIMIT_DAYS
+    barLimit = timeseriesLimitDays ?? TA_CLOSE_RANGE_DAYS
   } else if (taFilters?.duoKongCrossUp) {
     barLimit = timeseriesLimitDays ?? DUO_KONG_TIMESERIES_LIMIT_DAYS
   }

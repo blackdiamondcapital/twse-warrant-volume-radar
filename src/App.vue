@@ -1054,7 +1054,7 @@ onUnmounted(() => {
           <span class="ta-period-badge">日線</span>
           <h3>技術分析</h3>
         </div>
-        <p class="ta-hint muted">未填標的時掃<strong>成交量前 600 檔</strong>（約 30 秒內）。收盤近最高／最低：收盤價比對約 120 日區間；剛站上多空線：週期 45。查特定標的請輸入代號。</p>
+        <p class="ta-hint muted">未填標的時掃成交量前 600 檔。收盤近最高／最低：<strong>只用收盤價</strong>比對約 120 日區間（兩者都勾＝符合任一）。</p>
         <div class="ta-chip-row">
           <button
             type="button"
@@ -1067,14 +1067,14 @@ onUnmounted(() => {
             type="button"
             class="chip-btn"
             :class="{ active: taFilters.closeNearHigh }"
-            title="最新收盤價接近日線收盤價區間最高（約 250 日）"
+            title="最新收盤價接近約 120 日最高收盤價"
             @click="toggleTaFilter('closeNearHigh')"
           >收盤近最高</button>
           <button
             type="button"
             class="chip-btn"
             :class="{ active: taFilters.closeNearLow }"
-            title="最新收盤價接近日線收盤價區間最低（約 250 日）"
+            title="最新收盤價接近約 120 日最低收盤價"
             @click="toggleTaFilter('closeNearLow')"
           >收盤近最低</button>
           <button
