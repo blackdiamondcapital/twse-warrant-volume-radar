@@ -879,13 +879,14 @@ onUnmounted(() => {
   <div class="app" :class="{ 'app--results': showMasterResults }">
     <PwaInstallPrompt />
     <div class="topbar">
-      <a class="home-link" href="https://www.quantgems.com/" target="_blank" rel="noopener">
-        QuantGems® 主站
+      <a class="home-link" href="https://www.quantgems.com/" target="_blank" rel="noopener noreferrer">
+        <span class="home-link-brand">QuantGems®</span>
+        <span class="home-link-site">主站</span>
       </a>
       <div class="auth-box">
         <template v-if="isAuthenticated">
           <span class="auth-user">
-            <span class="auth-name">{{ displayName }}</span>
+            <span class="auth-name" :title="displayName">{{ displayName }}</span>
             <span class="plan-pill">{{ planLabel }}</span>
           </span>
           <a
@@ -1285,28 +1286,51 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.75rem;
   margin-bottom: 0.85rem;
+  min-width: 0;
 }
 .home-link {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: 0.35em;
+  flex-shrink: 0;
   color: var(--text-muted);
   font-size: 0.86rem;
   text-decoration: none;
+  line-height: 1.25;
+}
+.home-link-brand,
+.home-link-site {
+  white-space: nowrap;
 }
 .home-link:hover { color: var(--cyan-bright, #38bdf8); }
 .auth-box {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
 }
 .auth-user {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
   font-size: 0.88rem;
+  min-width: 0;
+  max-width: 12rem;
 }
-.auth-name { color: var(--text); }
+.auth-name {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
 .plan-pill {
+  flex-shrink: 0;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -1318,11 +1342,14 @@ onUnmounted(() => {
 .btn-auth {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.45rem;
   padding: 0.45rem 0.85rem;
   border-radius: 999px;
   font-size: 0.86rem;
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .btn-auth.google {
   background: rgba(255, 255, 255, 0.06);
@@ -2095,6 +2122,25 @@ a.btn-auth {
   font-weight: 650;
 }
 @media (max-width: 640px) {
+  .home-link {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    font-size: 0.8rem;
+  }
+  .auth-box {
+    gap: 0.35rem;
+  }
+  .auth-user {
+    max-width: 6.5rem;
+  }
+  .auth-name {
+    font-size: 0.8rem;
+  }
+  .btn-auth {
+    padding: 0.38rem 0.62rem;
+    font-size: 0.78rem;
+  }
   .brand-row {
     gap: 0.8rem;
   }
