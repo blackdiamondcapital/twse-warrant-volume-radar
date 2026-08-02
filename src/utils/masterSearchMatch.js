@@ -1,4 +1,4 @@
-/** 主檔關鍵字：代號類查詢避免「5274」誤中「052745」 */
+/** 主檔關鍵字：代號類查詢避免「5274」誤中「055274」「052747」 */
 
 export function normalizeStockCodeQuery(q) {
   let s = String(q || '').trim().toUpperCase()
@@ -19,8 +19,16 @@ export function isCodeLikeMasterQuery(q) {
   return !!code && /^[A-Z0-9]+$/i.test(code) && /\d/.test(code)
 }
 
+/** 4 位數字 → 視為現股標的代號（如 5274），只比標的、不比權證代號子字串 */
+export function isUnderlyingStockCodeQuery(q) {
+  const code = normalizeStockCodeQuery(q).replace(/\./g, '')
+  return /^\d{4}$/.test(code)
+}
+
 /**
- * 代號查詢：權證代號精確或前綴；標的代號精確。
+ * 代號查詢：
+ * - 4 位數字：標的代號精確（5274 → 只含標的 5274）
+ * - 權證代號：精確或前綴（03002 → 03002T…）
  * 名稱查詢：交由後端模糊比對，前端不另篩。
  */
 export function rowMatchesMasterQuery(row, q) {
@@ -31,6 +39,11 @@ export function rowMatchesMasterQuery(row, q) {
   const code = normalizeStockCodeQuery(raw)
   const warrant = normalizeStockCodeQuery(row?.warrant_code)
   const underlying = normalizeStockCodeQuery(row?.underlying_code)
+
+  if (isUnderlyingStockCodeQuery(raw)) {
+    return underlying === code
+  }
+
   return warrant === code || warrant.startsWith(code) || underlying === code
 }
 

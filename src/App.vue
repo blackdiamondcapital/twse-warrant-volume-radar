@@ -173,6 +173,20 @@ async function enrichScopedSearchResults(scoped) {
   return true
 }
 
+async function enrichCodeQueryGrades(rows) {
+  if (!rows?.length) return
+  statusText.value = `評等計算中… 0 / ${rows.length}`
+  const graded = applyMasterSort(await enrichMasterRowsWithGrades(rows, {
+    onProgress: ({ done, total }) => {
+      statusText.value = `評等計算 ${done} / ${total}…`
+    },
+  }))
+  taFilteredRows.value = graded
+  masterTotal.value = graded.length
+  paginateClientFilteredRows(Math.max(1, filters.page))
+  statusText.value = `代號「${String(filters.q).trim()}」精確符合 ${graded.length.toLocaleString()} 檔 · 第 ${filters.page} 頁`
+}
+
 const taFilters = reactive({
   reversalFirstRed: false,
   heikinFirstRed: false,
@@ -445,6 +459,9 @@ async function loadMaster() {
       clientFilterActive.value = true
       paginateClientFilteredRows(Math.max(1, filters.page))
       statusText.value = `代號「${String(filters.q).trim()}」精確符合 ${rows.length.toLocaleString()} 檔 · 第 ${filters.page} 頁`
+      if (rows.length > 0 && rows.length <= 200) {
+        await enrichCodeQueryGrades(rows)
+      }
       return
     }
 
@@ -456,8 +473,12 @@ async function loadMaster() {
       sort: filters.sort,
       sortDir: filters.sortDir,
     }))
-    masterRows.value = keepUnexpiredRows(data.data || [])
-    masterTotal.value = data.total || 0
+    let rows = keepUnexpiredRows(data.data || [])
+    if (codeQuery) {
+      rows = filterMasterRowsByQuery(rows, filters.q)
+    }
+    masterRows.value = rows
+    masterTotal.value = codeQuery ? rows.length : (data.total || 0)
     if (scoped && !wantClientFilter && masterTotal.value > 0) {
       if (await enrichScopedSearchResults(scoped)) return
     }
