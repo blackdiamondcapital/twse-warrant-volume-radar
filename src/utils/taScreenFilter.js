@@ -3,6 +3,7 @@ import { evaluateTaSignals, hasActiveTaFilters, passesTaFilters } from '../lib/t
 import { gradeWarrant, buildGradeDetail } from '../lib/warrantGrade.js'
 
 const TIMESERIES_LIMIT_DAYS = 90
+const FIB_TIMESERIES_LIMIT_DAYS = 250
 const DEFAULT_CONCURRENCY = 14
 
 const barCache = new Map()
@@ -56,11 +57,16 @@ export async function filterMasterRowsClient(
     onProgress,
     onMatch,
     concurrency = DEFAULT_CONCURRENCY,
+    timeseriesLimitDays,
   } = {},
 ) {
   const needTa = hasActiveTaFilters(taFilters)
   const needGrade = !!gradeFilter
   if ((!needTa && !needGrade && !gradeOnly) || !rows?.length) return rows
+
+  const barLimit = taFilters?.fibAt100
+    ? (timeseriesLimitDays ?? FIB_TIMESERIES_LIMIT_DAYS)
+    : (timeseriesLimitDays ?? TIMESERIES_LIMIT_DAYS)
 
   const list = [...rows]
   const matched = []
@@ -84,7 +90,7 @@ export async function filterMasterRowsClient(
         continue
       }
       try {
-        const bars = await fetchBarsForCode(code)
+        const bars = await fetchBarsForCode(code, barLimit)
         if (!bars.length) {
           if (gradeOnly) pushMatch({ ...row })
           done += 1

@@ -81,7 +81,48 @@ function goldenWaveBarRedAt(gw, i) {
   return isGoldenWaveBarRed(gw.dif[i], gw.difSub[i], subPrev3)
 }
 
-/** 小不點：最新一根為紅柱，且前一根非紅柱 */
+/** 對齊圖表：以全部日線高低點計算 0%～100% 黃金切割；100% = 區間最低價 */
+export function calcFibLevelsFromBars(bars) {
+  const ohlc = mapBars(bars).filter(
+    (b) => b.high != null && b.low != null && Number.isFinite(b.high) && Number.isFinite(b.low),
+  )
+  if (ohlc.length < 2) return null
+  let globalHigh = -Infinity
+  let globalLow = Infinity
+  for (const b of ohlc) {
+    if (b.high > globalHigh) globalHigh = b.high
+    if (b.low < globalLow) globalLow = b.low
+  }
+  if (!Number.isFinite(globalHigh) || !Number.isFinite(globalLow) || globalHigh <= globalLow) {
+    return null
+  }
+  const range = globalHigh - globalLow
+  const ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
+  const levels = ratios.map((r) => ({
+    ratio: r,
+    value: globalHigh - range * r,
+  }))
+  return { globalHigh, globalLow, range, levels, fib100: globalLow, fib0: globalHigh }
+}
+
+/**
+ * 最新收盤（或當根低點）接近黃金切割 100% 價位（整段日線最低點）。
+ * @param {number} toleranceRatio 容許誤差占區間振幅比例，預設 1.5%
+ */
+export function isPriceAtFib100(bars, toleranceRatio = 0.015) {
+  const fib = calcFibLevelsFromBars(bars)
+  if (!fib) return false
+  const ohlc = mapBars(bars).filter((b) => b.close != null)
+  const last = ohlc[ohlc.length - 1]
+  if (!last) return false
+  const tol = Math.max(fib.range * toleranceRatio, fib.globalHigh * 0.005)
+  const close = Number(last.close)
+  const low = last.low != null ? Number(last.low) : close
+  if (!Number.isFinite(close)) return false
+  return Math.abs(close - fib.fib100) <= tol || Math.abs(low - fib.fib100) <= tol
+}
+
+/** 小不點：最新一根為紅柱，且前一根非紅柱（評等仍使用，選股已移除） */
 export function isGoldenWaveFirstRed(closes, params = DEFAULT_GOLDEN_WAVE_PARAMS) {
   if (!closes?.length) return false
   const gw = calcGoldenWave(closes, params)
@@ -148,6 +189,7 @@ export function evaluateTaSignals(bars) {
     reversalFirstRed: isGoldenWaveFirstRed(closes, gwParams),
     heikinFirstRed: isHeikinFirstRed(ohlcBars),
     ma5gtMa10: isMa5AboveMa10(closes),
+    fibAt100: isPriceAtFib100(bars),
   }
 }
 
@@ -156,6 +198,7 @@ export function passesTaFilters(signals, taFilters) {
   if (taFilters.reversalFirstRed && !signals.reversalFirstRed) return false
   if (taFilters.heikinFirstRed && !signals.heikinFirstRed) return false
   if (taFilters.ma5gtMa10 && !signals.ma5gtMa10) return false
+  if (taFilters.fibAt100 && !signals.fibAt100) return false
   return true
 }
 
@@ -164,5 +207,6 @@ export function hasActiveTaFilters(taFilters) {
     taFilters?.reversalFirstRed
     || taFilters?.heikinFirstRed
     || taFilters?.ma5gtMa10
+    || taFilters?.fibAt100
   )
 }
