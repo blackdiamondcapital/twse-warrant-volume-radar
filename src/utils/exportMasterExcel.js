@@ -96,7 +96,7 @@ export async function exportRowsToExcel(rows, {
   return { count: sorted.length, method }
 }
 
-const EXPORT_PAGE_SIZE = 5000
+const EXPORT_PAGE_SIZE = 200
 const EXPORT_FETCH_CONCURRENCY = 4
 
 export async function fetchAllMasterRows(filters, numOrUndef, {
@@ -105,7 +105,7 @@ export async function fetchAllMasterRows(filters, numOrUndef, {
   concurrency = EXPORT_FETCH_CONCURRENCY,
   rowFilter,
 } = {}) {
-  const size = Math.max(100, Number(pageSize) || EXPORT_PAGE_SIZE)
+  const size = Math.min(200, Math.max(1, Number(pageSize) || EXPORT_PAGE_SIZE))
   const first = await fetchMasterSearch(buildSearchParams(filters, numOrUndef, 1, size))
   const total = Number(first.total) || 0
   const keep = (rows) => (typeof rowFilter === 'function' ? rows.filter(rowFilter) : rows)
@@ -137,7 +137,7 @@ export async function fetchAllMasterRows(filters, numOrUndef, {
 /** 主檔輪播：最多抓 maxRows 筆，避免一次載入過多 */
 export async function fetchMasterRowsUpTo(filters, numOrUndef, maxRows = 200) {
   const cap = Math.max(1, Number(maxRows) || 200)
-  const pageSize = Math.min(1000, cap)
+  const pageSize = Math.min(200, cap)
   let page = 1
   let total = Infinity
   const allRows = []
