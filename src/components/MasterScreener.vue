@@ -40,7 +40,7 @@ const columns = computed(() => {
     { key: 'code', label: '代號' },
   ]
   if (props.showGrade) {
-    base.push({ key: 'grade', label: '評等', align: 'num' })
+    base.push({ key: 'grade', label: '評等', align: 'center' })
   }
   base.push(
     { key: 'name', label: '名稱' },
@@ -48,10 +48,10 @@ const columns = computed(() => {
   )
   base.push(
     { key: 'close', label: '收盤', align: 'num' },
-    { key: 'volume', label: '成交量', shortLabel: '成交量', align: 'num' },
-    { key: 'exercise', label: '履約價', shortLabel: '履約價', align: 'num' },
-    { key: 'days', label: '剩餘天數', shortLabelLines: ['剩餘', '天數'], align: 'num' },
-    { key: 'expiry', label: '到期日', shortLabel: '到期' },
+    { key: 'volume', label: '成交量', align: 'num' },
+    { key: 'exercise', label: '履約價', align: 'num' },
+    { key: 'days', label: '剩餘天數', headerLines: ['剩餘', '天數'], align: 'num' },
+    { key: 'expiry', label: '到期日', align: 'center' },
   )
   return base
 })
@@ -176,13 +176,13 @@ function gradeClass(grade) {
                   `col-head-${col.key}`,
                   col.key === 'expiry' ? 'cell-expiry' : '',
                   col.key === 'days' ? 'cell-days' : '',
+                  col.key === 'grade' ? 'cell-grade' : '',
                 ]"
               >
-                <span class="col-label-full">{{ col.label }}</span>
-                <span v-if="col.shortLabelLines" class="col-label-short col-label-short--stacked">
-                  <span v-for="(line, i) in col.shortLabelLines" :key="i">{{ line }}</span>
+                <span v-if="col.headerLines" class="col-label-stacked">
+                  <span v-for="(line, i) in col.headerLines" :key="i">{{ line }}</span>
                 </span>
-                <span v-else class="col-label-short">{{ col.shortLabel || col.label }}</span>
+                <span v-else class="col-label-single">{{ col.label }}</span>
               </th>
             </tr>
           </thead>
@@ -194,7 +194,7 @@ function gradeClass(grade) {
               @click="emit('select', row)"
             >
               <td class="mono col-code">{{ row.warrant_code }}</td>
-              <td v-if="showGrade" class="num grade-cell col-grade">
+              <td v-if="showGrade" class="grade-cell col-grade">
                 <span
                   v-if="row.warrant_grade"
                   :class="gradeClass(row.warrant_grade)"
@@ -240,7 +240,6 @@ function gradeClass(grade) {
 
 <style scoped>
 .screener { padding: 0.65rem 1.1rem 1.1rem; min-width: 0; overflow: hidden; }
-.col-label-short { display: none; }
 .table-wrap {
   width: 100%;
   max-width: 100%;
@@ -249,18 +248,22 @@ function gradeClass(grade) {
 }
 .master-table {
   table-layout: fixed;
-  min-width: 860px;
+  min-width: 880px;
 }
 .master-table .col-code { width: 5.6rem; }
-.master-table .col-grade { width: 2.6rem; }
-.master-table .col-name { width: 11rem; }
+.master-table .col-grade { width: 3.2rem; }
+.master-table .col-name { width: 10.5rem; }
 .master-table .col-underlying { width: 6.5rem; }
 .master-table .col-close { width: 4rem; }
 .master-table .col-volume { width: 4.8rem; }
 .master-table .col-exercise { width: 4.2rem; }
-.master-table .col-days { width: 3.4rem; }
+.master-table .col-days { width: 3.6rem; }
 .master-table .col-expiry { width: 6.2rem; }
-.screener table.data th,
+.screener table.data th {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
 .screener table.data td {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -270,30 +273,41 @@ function gradeClass(grade) {
 .screener table.data td.num {
   text-align: right;
 }
+.screener table.data th.center,
+.screener table.data td.center {
+  text-align: center;
+}
+.screener table.data th.cell-grade,
+.screener table.data td.col-grade {
+  text-align: center;
+  white-space: nowrap;
+}
+.col-label-stacked {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  line-height: 1.15;
+  white-space: normal;
+}
+.screener table.data th.cell-days {
+  white-space: normal;
+  text-align: right;
+}
+.screener table.data th.cell-days .col-label-stacked {
+  align-items: flex-end;
+}
+.screener table.data td.cell-days {
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+}
 .screener table.data th.cell-expiry,
 .screener table.data td.cell-expiry {
   text-align: center;
   padding-left: 0.35rem;
   padding-right: 0.35rem;
-}
-.screener table.data th.cell-days,
-.screener table.data td.cell-days {
-  text-align: right;
-  padding-left: 0.35rem;
-  padding-right: 0.35rem;
-}
-.screener table.data th.cell-days {
-  white-space: normal;
-}
-.col-label-short--stacked {
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.05rem;
-  line-height: 1.1;
-}
-.screener table.data td.cell-days {
-  white-space: nowrap;
 }
 .screener table.data td.col-name {
   white-space: nowrap;
@@ -481,19 +495,12 @@ function gradeClass(grade) {
     padding-right: 0.45rem;
   }
   .master-table {
-    min-width: 760px;
+    min-width: 780px;
   }
-  .col-label-full { display: none; }
-  .col-label-short { display: inline; }
   .screener table.data th,
   .screener table.data td {
     padding: 0.42rem 0.3rem;
     font-size: 0.76rem;
-  }
-  .screener table.data th.cell-days .col-label-short--stacked {
-    display: flex;
-    font-size: 0.62rem;
-    letter-spacing: -0.04em;
   }
   .expiry-full { display: none; }
   .expiry-short { display: inline; }
