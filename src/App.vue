@@ -218,6 +218,8 @@ const loadingMaster = ref(false)
 const masterScreenerOpen = ref(false)
 const showMasterResults = ref(false)
 const exportingMaster = ref(false)
+/** Excel 匯出：false=僅個股，true=含加權／台指等指數類 */
+const masterExportIncludeIndex = ref(false)
 const heatSectionOpen = ref(false)
 const exportingHeat = ref(false)
 
@@ -722,6 +724,8 @@ async function setMasterTypeAndSearch(type) {
 
 async function onExportMaster() {
   exportingMaster.value = true
+  const includeIndex = masterExportIncludeIndex.value
+  const scopeLabel = includeIndex ? '未到期權證（含指數類）' : '未到期個股權證'
   statusText.value = '請選擇儲存位置（預設桌面）…'
   try {
     let presetRows = null
@@ -734,19 +738,19 @@ async function onExportMaster() {
       rows: presetRows || undefined,
       includeGrade: false,
       compact: true,
-      individualStockOnly: true,
+      individualStockOnly: !includeIndex,
       unexpiredOnly: true,
       onProgress: ({ phase, loaded, scanned }) => {
         if (phase === 'load') {
-          const excluded = Math.max(0, (scanned || 0) - (loaded || 0))
+          const excluded = !includeIndex ? Math.max(0, (scanned || 0) - (loaded || 0)) : 0
           const suffix = excluded > 0
             ? `（已排除指數類 ${excluded.toLocaleString()} 檔）`
             : ''
-          statusText.value = `已選位置，載入未到期個股權證… ${loaded.toLocaleString()} 檔${suffix}`
+          statusText.value = `已選位置，載入${scopeLabel}… ${loaded.toLocaleString()} 檔${suffix}`
         }
       },
     })
-    statusText.value = excelDownloadStatus(method, count)
+    statusText.value = excelDownloadStatus(method, count, includeIndex ? 'all' : 'individual')
   } catch (err) {
     console.error(err)
     if (err?.name === 'AbortError') {
@@ -1069,6 +1073,7 @@ onUnmounted(() => {
         :page-size="filters.pageSize"
         :loading="loadingMaster"
         :exporting="exportingMaster"
+        :export-include-index="masterExportIncludeIndex"
         :selected-code="selected?.warrant_code || ''"
         :open="masterScreenerOpen"
         :show-grade="false"
@@ -1076,6 +1081,7 @@ onUnmounted(() => {
         @page="onPage"
         @toggle="toggleMasterScreener"
         @export="onExportMaster"
+        @update:export-include-index="masterExportIncludeIndex = $event"
       />
     </div>
 
@@ -1167,12 +1173,24 @@ onUnmounted(() => {
           <div class="results-toolbar-row results-toolbar-row--main">
             <button type="button" class="back-btn" @click="backToSearch">← 返回</button>
             <span class="results-meta muted" :title="resultsMetaLabel">{{ resultsMetaLabel }}</span>
+            <div class="results-export-scope">
+              <button
+                type="button"
+                :class="{ active: !masterExportIncludeIndex }"
+                @click="masterExportIncludeIndex = false"
+              >個股</button>
+              <button
+                type="button"
+                :class="{ active: masterExportIncludeIndex }"
+                @click="masterExportIncludeIndex = true"
+              >含指數</button>
+            </div>
             <button
               type="button"
               class="results-export-btn"
               :class="{ 'results-export-btn--ready': canExportMasterResults && !exportingMaster && !loadingMaster }"
               :disabled="exportingMaster || loadingMaster || !canExportMasterResults"
-              title="匯出未到期個股權證代號（不含評等）"
+              :title="masterExportIncludeIndex ? '匯出未到期權證（含加權／台指等指數類，不含評等）' : '匯出未到期個股權證（不含評等）'"
               @click="onExportMaster"
             >
               {{ exportingMaster ? '匯出中…' : 'Excel' }}
@@ -1221,12 +1239,14 @@ onUnmounted(() => {
           :page-size="filters.pageSize"
           :loading="loadingMaster"
           :exporting="exportingMaster"
+          :export-include-index="masterExportIncludeIndex"
           :selected-code="selected?.warrant_code || ''"
           :open="true"
           :show-grade="usesClientSideMasterResults()"
           @select="selectMasterWarrant"
           @page="onPage"
           @export="onExportMaster"
+          @update:export-include-index="masterExportIncludeIndex = $event"
         />
 
         <div v-if="masterCarouselEnabled" class="carousel-bar panel carousel-bar--mobile">
@@ -2004,6 +2024,25 @@ a.btn-auth {
 .results-export-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+.results-export-scope {
+  display: flex;
+  gap: 0.28rem;
+  flex-shrink: 0;
+}
+.results-export-scope button {
+  border: 1px solid rgba(148, 183, 205, 0.28);
+  background: rgba(7, 11, 20, 0.45);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 0.22rem 0.52rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.results-export-scope button.active {
+  color: var(--cyan-bright);
+  border-color: rgba(0, 212, 255, 0.45);
+  background: rgba(0, 212, 255, 0.1);
 }
 .results-toolbar-row--search {
   gap: 0.35rem;

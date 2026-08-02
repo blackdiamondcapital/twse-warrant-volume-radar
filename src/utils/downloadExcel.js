@@ -127,8 +127,9 @@ export async function downloadExcelFile(workbook, filename, saveTarget = null) {
   return writeExcelBlob(blob, { mode: 'auto', filename: name })
 }
 
-export function excelDownloadStatus(method, count) {
-  const n = count != null ? `（${Number(count).toLocaleString()} 檔未到期個股權證）` : ''
+export function excelDownloadStatus(method, count, scope = 'individual') {
+  const scopeLabel = scope === 'all' ? '未到期權證（含指數類）' : '未到期個股權證'
+  const n = count != null ? `（${Number(count).toLocaleString()} 檔${scopeLabel}）` : ''
   if (method === 'save-as') return `已儲存 Excel${n}至您選擇的位置（桌面）`
   if (method === 'share') return `請在分享選單選擇「儲存到檔案」${n}`
   if (method === 'open') return `已開啟 Excel${n}，請用瀏覽器選單儲存或分享`

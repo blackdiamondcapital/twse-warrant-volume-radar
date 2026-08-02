@@ -212,7 +212,12 @@ export async function exportMasterToExcel(filters, numOrUndef, {
   unexpiredOnly = true,
   saveTarget: presetSaveTarget = null,
 } = {}) {
-  const filenamePrefix = compact ? '個股權證代號_未到期' : '權證主檔_未到期'
+  const filenamePrefix = compact
+    ? (individualStockOnly ? '個股權證代號_未到期' : '權證代號_未到期含指數')
+    : (individualStockOnly ? '權證主檔_未到期' : '權證主檔_未到期含指數')
+  const sheetLabel = compact
+    ? (individualStockOnly ? '個股權證代號' : '權證代號含指數')
+    : (individualStockOnly ? '發行主檔' : '發行主檔含指數')
   const filename = `${filenamePrefix}_${todayStamp()}.xlsx`
   const saveTarget = presetSaveTarget || await pickExcelSaveLocation(filename)
 
@@ -229,12 +234,14 @@ export async function exportMasterToExcel(filters, numOrUndef, {
       q: filters?.q,
     })
     : await fetchAllMasterRows(filters, numOrUndef, {
-      onProgress: ({ loaded, total }) => onProgress?.({ phase: 'load', loaded, total }),
+      onProgress: (payload) => onProgress?.({ phase: 'load', ...payload }),
       rowFilter,
     })
 
   if (!rows.length) {
-    throw new Error('沒有符合條件的未到期個股權證可匯出')
+    throw new Error(individualStockOnly
+      ? '沒有符合條件的未到期個股權證可匯出'
+      : '沒有符合條件的未到期權證可匯出')
   }
 
   if (includeGrade) {
@@ -243,7 +250,7 @@ export async function exportMasterToExcel(filters, numOrUndef, {
 
   return exportRowsToExcel(rows, {
     filenamePrefix,
-    sheetName: compact ? '個股權證代號' : '發行主檔',
+    sheetName: sheetLabel,
     compact,
     saveTarget,
     filename,

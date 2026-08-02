@@ -16,9 +16,11 @@ const props = defineProps({
   resultsMode: { type: Boolean, default: false },
   /** 日線篩選結果：顯示 A/B/C 評等 */
   showGrade: { type: Boolean, default: false },
+  /** Excel 匯出是否含指數類權證 */
+  exportIncludeIndex: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['select', 'page', 'toggle', 'export'])
+const emit = defineEmits(['select', 'page', 'toggle', 'export', 'update:exportIncludeIndex'])
 
 const displayTotal = computed(() => {
   if (props.total > 0) return props.total
@@ -66,10 +68,11 @@ const canExportExcel = computed(() => {
 
 const exportBtnTitle = computed(() => {
   if (canExportExcel.value) {
+    const scope = props.exportIncludeIndex ? '未到期權證（含加權／台指等指數類）' : '未到期個股權證'
     if (props.total > 0) {
-      return `匯出未到期個股權證代號（${props.total.toLocaleString()} 檔，不含評等）`
+      return `匯出${scope}（${props.total.toLocaleString()} 檔，不含評等）`
     }
-    return '匯出未到期個股權證代號（排除指數類與已到期，不含評等；筆數以實際匯入 Excel 為準）'
+    return `匯出${scope}（不含評等；含指數時約 3.9 萬檔、僅個股約 3.6 萬檔）`
   }
   return '沒有可匯出的資料'
 })
@@ -138,16 +141,30 @@ function gradeClass(grade) {
           <span class="muted">{{ countLabel }}</span>
         </div>
       </div>
-      <button
-        type="button"
-        class="export-btn"
-        :class="{ 'export-btn--ready': canExportExcel && !exporting && !loading }"
-        :disabled="exporting || loading || !canExportExcel"
-        :title="exportBtnTitle"
-        @click.stop="emit('export')"
-      >
-        {{ exporting ? '匯出中…' : '下載 Excel' }}
-      </button>
+      <div class="export-actions">
+        <div class="export-scope-chips">
+          <button
+            type="button"
+            :class="{ active: !exportIncludeIndex }"
+            @click.stop="emit('update:exportIncludeIndex', false)"
+          >個股</button>
+          <button
+            type="button"
+            :class="{ active: exportIncludeIndex }"
+            @click.stop="emit('update:exportIncludeIndex', true)"
+          >含指數</button>
+        </div>
+        <button
+          type="button"
+          class="export-btn"
+          :class="{ 'export-btn--ready': canExportExcel && !exporting && !loading }"
+          :disabled="exporting || loading || !canExportExcel"
+          :title="exportBtnTitle"
+          @click.stop="emit('export')"
+        >
+          {{ exporting ? '匯出中…' : '下載 Excel' }}
+        </button>
+      </div>
     </div>
 
     <div v-show="panelOpen">
@@ -319,6 +336,32 @@ function gradeClass(grade) {
   align-items: center;
   gap: 0.65rem;
   margin-bottom: 0.75rem;
+}
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+.export-scope-chips {
+  display: flex;
+  gap: 0.28rem;
+}
+.export-scope-chips button {
+  border: 1px solid rgba(148, 183, 205, 0.28);
+  background: rgba(7, 11, 20, 0.45);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.export-scope-chips button.active {
+  color: var(--cyan-bright);
+  border-color: rgba(0, 212, 255, 0.45);
+  background: rgba(0, 212, 255, 0.1);
 }
 .head {
   display: flex;
