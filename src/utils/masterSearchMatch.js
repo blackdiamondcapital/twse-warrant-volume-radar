@@ -51,3 +51,23 @@ export function filterMasterRowsByQuery(rows, q) {
   if (!isCodeLikeMasterQuery(q)) return rows || []
   return (rows || []).filter((row) => rowMatchesMasterQuery(row, q))
 }
+
+/** 標的／權證代號查詢：忽略基本面條件，避免殘留篩選導致 0 筆 */
+export function buildStockCodeLookupFilters(filters) {
+  if (!filters || typeof filters !== 'object') return filters
+  return {
+    ...filters,
+    closeMin: '',
+    closeMax: '',
+    exerciseMin: '',
+    exerciseMax: '',
+    ratioMin: '',
+    ratioMax: '',
+    volumeMin: '',
+    volumeMax: '',
+    daysMin: '',
+    daysMax: '',
+    expiryFrom: '',
+    expiryTo: '',
+  }
+}

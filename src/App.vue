@@ -20,7 +20,7 @@ import { exportMasterToExcel, fetchMasterRowsUpTo, fetchMasterRowsForQuery } fro
 import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { buildMasterSearchParams } from './utils/masterSearchParams.js'
-import { filterMasterRowsByQuery, isCodeLikeMasterQuery } from './utils/masterSearchMatch.js'
+import { filterMasterRowsByQuery, isCodeLikeMasterQuery, buildStockCodeLookupFilters } from './utils/masterSearchMatch.js'
 import { isUnexpiredWarrant } from './utils/warrantDisplay.js'
 import { enrichMasterRowsWithGrades, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
 import { hasActiveTaFilters } from './lib/taScreenRules.js'
@@ -423,7 +423,12 @@ async function loadMaster() {
     // 標的／權證代號：優先精確比對（不受技術面篩選路徑影響）
     if (codeQuery) {
       statusText.value = '代號精確比對中…'
-      const raw = await fetchMasterRowsForQuery(filters, numOrUndef)
+      const lookupFilters = buildStockCodeLookupFilters(filters)
+      const raw = await fetchMasterRowsForQuery(lookupFilters, numOrUndef, {
+        onProgress: ({ loaded, total }) => {
+          statusText.value = `載入中… ${loaded.toLocaleString()} / ${total.toLocaleString()} 檔`
+        },
+      })
       const rows = applyMasterSort(filterMasterRowsByQuery(keepUnexpiredRows(raw), filters.q))
       taFilteredRows.value = rows
       masterTotal.value = rows.length
@@ -432,7 +437,7 @@ async function loadMaster() {
       const qLabel = String(filters.q).trim()
       statusText.value = rows.length
         ? `標的／代號「${qLabel}」符合 ${rows.length.toLocaleString()} 檔 · 第 ${filters.page} 頁`
-        : `標的／代號「${qLabel}」沒有符合的未到期權證`
+        : `標的／代號「${qLabel}」沒有符合的未到期權證（可先按「清除基本面條件」再搜）`
       if (rows.length > 0 && rows.length <= 200) {
         void enrichCodeQueryGrades(rows).catch((err) => {
           console.error(err)
