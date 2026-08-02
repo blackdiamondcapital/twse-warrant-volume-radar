@@ -250,7 +250,7 @@ function gradeClass(grade) {
 .master-table .col-code { width: 5.6rem; }
 .master-table .col-grade { width: 3.2rem; }
 .master-table .col-name { width: 10.5rem; }
-.master-table .col-underlying { width: 6.5rem; }
+.master-table .col-underlying { width: 5.2rem; }
 .master-table .col-close { width: 4rem; }
 .master-table .col-volume { width: 4.8rem; }
 .master-table .col-exercise { width: 4.2rem; }
@@ -265,6 +265,9 @@ function gradeClass(grade) {
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
+}
+.screener table.data td.underlying {
+  overflow: visible;
 }
 .screener table.data th.num,
 .screener table.data td.num {

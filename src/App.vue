@@ -703,6 +703,13 @@ function setMasterType(type) {
   filters.type = type
 }
 
+async function setMasterTypeAndSearch(type) {
+  filters.type = type
+  if (showMasterResults.value) {
+    await onSearch()
+  }
+}
+
 async function onExportMaster() {
   exportingMaster.value = true
   statusText.value = '正在準備 Excel…'
@@ -1161,6 +1168,14 @@ onUnmounted(() => {
             <button type="button" class="primary results-search-btn" :disabled="loadingMaster" @click="onSearch">
               {{ loadingMaster ? '搜尋中…' : '再搜尋' }}
             </button>
+          </div>
+          <div class="results-type-toggle">
+            <span class="results-search-label">類型</span>
+            <div class="btns">
+              <button type="button" :class="{ active: filters.type === '' }" @click="setMasterTypeAndSearch('')">全部</button>
+              <button type="button" :class="{ active: filters.type === '認購' }" @click="setMasterTypeAndSearch('認購')">認購</button>
+              <button type="button" :class="{ active: filters.type === '認售' }" @click="setMasterTypeAndSearch('認售')">認售</button>
+            </div>
           </div>
         </div>
 
@@ -2107,6 +2122,31 @@ a.btn-auth {
 .results-search-btn {
   flex-shrink: 0;
   min-width: 5.5rem;
+}
+.results-type-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+}
+.results-type-toggle .btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.results-type-toggle .btns button {
+  border: 1px solid rgba(148, 183, 205, 0.28);
+  background: rgba(7, 11, 20, 0.45);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 0.28rem 0.72rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.results-type-toggle .btns button.active {
+  color: var(--cyan-bright);
+  border-color: rgba(0, 212, 255, 0.45);
+  background: rgba(0, 212, 255, 0.1);
 }
 .back-btn {
   flex-shrink: 0;
