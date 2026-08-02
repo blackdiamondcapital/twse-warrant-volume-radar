@@ -1,7 +1,7 @@
 /** 自訂權證 A/B/C 評等（成交量／行使比／到期日／技術面） */
 
-export const GRADE_RATIO_MIN = 0.08
-export const GRADE_RATIO_MAX = 0.85
+export const GRADE_RATIO_MIN = 0.2
+export const GRADE_RATIO_MAX = 0.5
 
 export const GRADE_DIMENSIONS = [
   { key: 'volume', label: '成交量' },
@@ -17,7 +17,7 @@ export const WARRANT_GRADE_MATRIX = {
     title: 'A 級（佳）',
     volume: '達標（量能充足）',
     ratio: '達標（理想區間）',
-    expiry: '剩餘 14～240 日',
+    expiry: '剩餘 30～180 日',
     technical: '至少 1 項成立（小不點／神奇K／5均>10均）',
   },
   B: {
@@ -25,7 +25,7 @@ export const WARRANT_GRADE_MATRIX = {
     title: 'B 級（可）',
     volume: '達標（有基本量能）',
     ratio: '達標（理想區間）',
-    expiry: '剩餘 7～365 日',
+    expiry: '剩餘 14～365 日',
     technical: '不要求，但其他三項須達標',
   },
   C: {
@@ -127,10 +127,10 @@ function dimChecks(row, taSignals) {
     days,
     taCount,
     ratioOk,
-    volumeA: volume != null && volume >= 300,
-    volumeB: volume != null && volume >= 100,
-    expiryA: inRange(days, 14, 240),
-    expiryB: inRange(days, 7, 365),
+    volumeA: volume != null && volume >= 1000,
+    volumeB: volume != null && volume >= 500,
+    expiryA: inRange(days, 30, 180),
+    expiryB: inRange(days, 14, 365),
     technicalA: taCount >= 1,
   }
 }
@@ -183,19 +183,19 @@ export function buildGradeDetail(row, { taSignals } = {}) {
 export function gradeApiPrefilters(gradeFilter) {
   if (gradeFilter === 'A') {
     return {
-      volumeMin: 300,
+      volumeMin: 1000,
       ratioMin: GRADE_RATIO_MIN,
       ratioMax: GRADE_RATIO_MAX,
-      daysMin: 14,
-      daysMax: 240,
+      daysMin: 30,
+      daysMax: 180,
     }
   }
   if (gradeFilter === 'B') {
     return {
-      volumeMin: 100,
+      volumeMin: 500,
       ratioMin: GRADE_RATIO_MIN,
       ratioMax: GRADE_RATIO_MAX,
-      daysMin: 7,
+      daysMin: 14,
       daysMax: 365,
     }
   }

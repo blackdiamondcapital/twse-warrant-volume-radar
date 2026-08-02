@@ -134,6 +134,26 @@ export async function fetchAllMasterRows(filters, numOrUndef, {
   return allRows
 }
 
+const MASTER_QUERY_PAGE_SIZE = 200
+
+/** 依關鍵字抓完整主檔（API 每頁最多 200 筆） */
+export async function fetchMasterRowsForQuery(filters, numOrUndef, { onProgress } = {}) {
+  const pageSize = MASTER_QUERY_PAGE_SIZE
+  const first = await fetchMasterSearch(buildSearchParams(filters, numOrUndef, 1, pageSize))
+  const total = Number(first.total) || 0
+  const allRows = [...(first.data || [])]
+  onProgress?.({ loaded: allRows.length, total })
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  for (let page = 2; page <= totalPages; page += 1) {
+    const data = await fetchMasterSearch(buildSearchParams(filters, numOrUndef, page, pageSize))
+    allRows.push(...(data.data || []))
+    onProgress?.({ loaded: allRows.length, total })
+  }
+
+  return allRows
+}
+
 /** 主檔輪播：最多抓 maxRows 筆，避免一次載入過多 */
 export async function fetchMasterRowsUpTo(filters, numOrUndef, maxRows = 200) {
   const cap = Math.max(1, Number(maxRows) || 200)

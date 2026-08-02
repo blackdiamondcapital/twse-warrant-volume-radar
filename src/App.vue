@@ -16,7 +16,7 @@ import MasterScreener from './components/MasterScreener.vue'
 import RankingPanel from './components/RankingPanel.vue'
 import StockChartECharts from './components/StockChartECharts.vue'
 import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
-import { exportMasterToExcel, fetchMasterRowsUpTo } from './utils/exportMasterExcel.js'
+import { exportMasterToExcel, fetchMasterRowsUpTo, fetchMasterRowsForQuery } from './utils/exportMasterExcel.js'
 import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { buildMasterSearchParams } from './utils/masterSearchParams.js'
@@ -420,6 +420,27 @@ async function loadMaster() {
     const wantClientFilter = hasActiveTaFilters(taFilters)
     const codeQuery = isCodeLikeMasterQuery(filters.q)
 
+    // 標的／權證代號：優先精確比對（不受技術面篩選路徑影響）
+    if (codeQuery) {
+      statusText.value = '代號精確比對中…'
+      const raw = await fetchMasterRowsForQuery(filters, numOrUndef)
+      const rows = applyMasterSort(filterMasterRowsByQuery(keepUnexpiredRows(raw), filters.q))
+      taFilteredRows.value = rows
+      masterTotal.value = rows.length
+      clientFilterActive.value = true
+      paginateClientFilteredRows(Math.max(1, filters.page))
+      const qLabel = String(filters.q).trim()
+      statusText.value = rows.length
+        ? `標的／代號「${qLabel}」符合 ${rows.length.toLocaleString()} 檔 · 第 ${filters.page} 頁`
+        : `標的／代號「${qLabel}」沒有符合的未到期權證`
+      if (rows.length > 0 && rows.length <= 200) {
+        void enrichCodeQueryGrades(rows).catch((err) => {
+          console.error(err)
+        })
+      }
+      return
+    }
+
     if (needsClientSideMasterFilter(taFilters, '', { scopedSearch: scoped })) {
       const fullMarket = wantClientFilter && !scoped
       statusText.value = fullMarket ? '後端全市場技術掃描中…' : '後端技術面篩選中…'
@@ -449,22 +470,6 @@ async function loadMaster() {
       return
     }
 
-    // 代號查詢：前端精確／前綴過濾，避免後端 %5274% 誤中 052745
-    if (codeQuery) {
-      statusText.value = '代號精確比對中…'
-      const raw = await fetchMasterRowsUpTo(filters, numOrUndef, 5000)
-      const rows = applyMasterSort(filterMasterRowsByQuery(keepUnexpiredRows(raw), filters.q))
-      taFilteredRows.value = rows
-      masterTotal.value = rows.length
-      clientFilterActive.value = true
-      paginateClientFilteredRows(Math.max(1, filters.page))
-      statusText.value = `代號「${String(filters.q).trim()}」精確符合 ${rows.length.toLocaleString()} 檔 · 第 ${filters.page} 頁`
-      if (rows.length > 0 && rows.length <= 200) {
-        await enrichCodeQueryGrades(rows)
-      }
-      return
-    }
-
     taFilteredRows.value = []
     clientFilterActive.value = false
     const data = await fetchMasterSearch(buildMasterSearchParams(filters, numOrUndef, {
@@ -473,12 +478,8 @@ async function loadMaster() {
       sort: filters.sort,
       sortDir: filters.sortDir,
     }))
-    let rows = keepUnexpiredRows(data.data || [])
-    if (codeQuery) {
-      rows = filterMasterRowsByQuery(rows, filters.q)
-    }
-    masterRows.value = rows
-    masterTotal.value = codeQuery ? rows.length : (data.total || 0)
+    masterRows.value = keepUnexpiredRows(data.data || [])
+    masterTotal.value = data.total || 0
     if (scoped && !wantClientFilter && masterTotal.value > 0) {
       if (await enrichScopedSearchResults(scoped)) return
     }

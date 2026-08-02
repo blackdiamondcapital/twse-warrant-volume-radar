@@ -19,7 +19,7 @@ export function isCodeLikeMasterQuery(q) {
   return !!code && /^[A-Z0-9]+$/i.test(code) && /\d/.test(code)
 }
 
-/** 4 位數字 → 視為現股標的代號（如 5274），只比標的、不比權證代號子字串 */
+/** 4 位數字 → 現股標的代號（如 5274 信驊），只比標的、不比權證代號子字串 */
 export function isUnderlyingStockCodeQuery(q) {
   const code = normalizeStockCodeQuery(q).replace(/\./g, '')
   return /^\d{4}$/.test(code)
@@ -27,7 +27,7 @@ export function isUnderlyingStockCodeQuery(q) {
 
 /**
  * 代號查詢：
- * - 4 位數字：標的代號精確（5274 → 只含標的 5274）
+ * - 4 位數字：標的代號精確（5274 → 信驊，排除 055274 等誤中）
  * - 權證代號：精確或前綴（03002 → 03002T…）
  * 名稱查詢：交由後端模糊比對，前端不另篩。
  */
