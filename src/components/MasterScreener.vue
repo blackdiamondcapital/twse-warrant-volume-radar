@@ -114,7 +114,7 @@ function gradeClass(grade) {
 
 <template>
   <div class="screener panel" :class="{ 'screener--results': resultsMode }">
-    <div class="head-row">
+    <div class="head-row" v-if="!resultsMode">
       <button
         v-if="!resultsMode"
         type="button"
@@ -372,6 +372,7 @@ function gradeClass(grade) {
 }
 .screener--results {
   margin-top: 0;
+  padding: 0.35rem 0.55rem 0.65rem;
 }
 .head-main {
   display: flex;

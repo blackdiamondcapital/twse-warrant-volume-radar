@@ -384,6 +384,15 @@ const masterSearchSummary = computed(() => {
   return parts.length ? parts.join(' · ') : '全部未到期權證'
 })
 
+const resultsMetaLabel = computed(() => {
+  if (loadingMaster.value) return '載入中…'
+  if (masterTotal.value > 0) return `符合 ${masterTotal.value.toLocaleString()} 檔 · ${masterSearchSummary.value}`
+  if (statusText.value) return statusText.value
+  return masterSearchSummary.value
+})
+
+const canExportMasterResults = computed(() => masterTotal.value > 0)
+
 function numOrUndef(v) {
   if (v === '' || v == null) return undefined
   const n = Number(v)
@@ -867,7 +876,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app">
+  <div class="app" :class="{ 'app--results': showMasterResults }">
     <PwaInstallPrompt />
     <div class="topbar">
       <a class="home-link" href="https://www.quantgems.com/" target="_blank" rel="noopener">
@@ -906,7 +915,7 @@ onUnmounted(() => {
         </template>
       </div>
     </div>
-    <p v-if="authStatus" class="auth-status muted">{{ authStatus }}</p>
+    <p v-if="authStatus && !showMasterResults" class="auth-status muted">{{ authStatus }}</p>
 
     <template v-if="!showMasterResults">
     <header class="hero">
@@ -1146,55 +1155,52 @@ onUnmounted(() => {
 
     <template v-else>
       <section class="results-page">
-        <div class="results-nav panel">
-          <button type="button" class="back-btn" @click="backToSearch">
-            ← 返回搜尋條件
-          </button>
-          <div class="results-copy">
-            <h1 class="results-title">權證搜尋結果</h1>
-            <p class="results-summary muted">{{ masterSearchSummary }}</p>
+        <div class="results-toolbar panel">
+          <div class="results-toolbar-row results-toolbar-row--main">
+            <button type="button" class="back-btn" @click="backToSearch">← 返回</button>
+            <span class="results-meta muted" :title="resultsMetaLabel">{{ resultsMetaLabel }}</span>
+            <button
+              type="button"
+              class="results-export-btn"
+              :class="{ 'results-export-btn--ready': canExportMasterResults && !exportingMaster && !loadingMaster }"
+              :disabled="exportingMaster || loadingMaster || !canExportMasterResults"
+              title="匯出未到期個股權證代號（不含評等）"
+              @click="onExportMaster"
+            >
+              {{ exportingMaster ? '匯出中…' : 'Excel' }}
+            </button>
           </div>
-        </div>
-
-        <div class="results-search panel">
-          <label class="results-search-label">關鍵字</label>
-          <div class="results-search-row">
+          <div class="results-toolbar-row results-toolbar-row--search">
             <input
               v-model="filters.q"
               class="results-search-input"
-              placeholder="標的 4 碼：2330、5274｜權證：703349、03002T｜名稱：金像電"
+              placeholder="2330、5274、703349、金像電"
               @keyup.enter="onSearch"
             />
             <button type="button" class="primary results-search-btn" :disabled="loadingMaster" @click="onSearch">
-              {{ loadingMaster ? '搜尋中…' : '再搜尋' }}
+              {{ loadingMaster ? '…' : '搜尋' }}
             </button>
-          </div>
-          <div class="results-type-toggle">
-            <span class="results-search-label">類型</span>
-            <div class="btns">
+            <div class="results-type-chips">
               <button type="button" :class="{ active: filters.type === '' }" @click="setMasterTypeAndSearch('')">全部</button>
               <button type="button" :class="{ active: filters.type === '認購' }" @click="setMasterTypeAndSearch('認購')">認購</button>
               <button type="button" :class="{ active: filters.type === '認售' }" @click="setMasterTypeAndSearch('認售')">認售</button>
             </div>
           </div>
-        </div>
-
-        <p class="status muted">{{ statusText }}</p>
-
-        <div v-if="masterTotal > 0" class="results-sort panel">
-          <span class="results-sort-label">排序</span>
-          <div class="results-sort-chips">
-            <button
-              v-for="opt in MASTER_SORT_OPTIONS"
-              :key="opt.key"
-              type="button"
-              class="chip-btn"
-              :class="{ active: filters.sort === opt.key }"
-              @click="setMasterSort(opt.key)"
-            >{{ opt.label }}</button>
-            <button type="button" class="chip-btn sort-dir-btn" @click="setMasterSort(filters.sort)">
-              {{ sortDirLabel() }}
-            </button>
+          <div v-if="masterTotal > 0" class="results-toolbar-row results-toolbar-row--sort">
+            <span class="results-sort-label">排序</span>
+            <div class="results-sort-chips">
+              <button
+                v-for="opt in MASTER_SORT_OPTIONS"
+                :key="opt.key"
+                type="button"
+                class="chip-btn"
+                :class="{ active: filters.sort === opt.key }"
+                @click="setMasterSort(opt.key)"
+              >{{ opt.label }}</button>
+              <button type="button" class="chip-btn sort-dir-btn" @click="setMasterSort(filters.sort)">
+                {{ sortDirLabel() }}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1905,10 +1911,106 @@ a.btn-auth {
   min-height: 1.25rem;
   font-size: 0.9rem;
 }
+.app--results {
+  padding-top: 0.35rem;
+}
+.app--results .topbar {
+  margin-bottom: 0.4rem;
+}
 .results-page {
   display: grid;
-  gap: 0.85rem;
+  gap: 0.35rem;
   animation: rise 0.85s ease both;
+}
+.results-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.45rem 0.65rem;
+  background: rgba(8, 12, 22, 0.94);
+  backdrop-filter: blur(10px);
+}
+.results-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  min-width: 0;
+}
+.results-toolbar-row--main {
+  gap: 0.45rem;
+}
+.results-meta {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.results-export-btn {
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 212, 255, 0.35);
+  background: rgba(0, 212, 255, 0.08);
+  color: var(--cyan-bright);
+  border-radius: 7px;
+  padding: 0.3rem 0.62rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.results-export-btn--ready {
+  border-color: rgba(0, 212, 255, 0.55);
+  background: rgba(0, 212, 255, 0.14);
+}
+.results-export-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.results-toolbar-row--search {
+  gap: 0.35rem;
+}
+.results-search-input {
+  flex: 1 1 8rem;
+  min-width: 0;
+  padding: 0.36rem 0.55rem;
+  border-radius: 7px;
+  border: 1px solid rgba(0, 212, 255, 0.22);
+  background: rgba(7, 11, 20, 0.55);
+  color: var(--text);
+  font-size: 0.84rem;
+}
+.results-search-btn {
+  flex-shrink: 0;
+  min-width: 3.2rem;
+  padding: 0.36rem 0.7rem;
+  font-size: 0.82rem;
+}
+.results-type-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+}
+.results-type-chips button {
+  border: 1px solid rgba(148, 183, 205, 0.28);
+  background: rgba(7, 11, 20, 0.45);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 0.22rem 0.58rem;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+.results-type-chips button.active {
+  color: var(--cyan-bright);
+  border-color: rgba(0, 212, 255, 0.45);
+  background: rgba(0, 212, 255, 0.1);
+}
+.results-toolbar-row--sort {
+  gap: 0.35rem 0.45rem;
 }
 .carousel-bar--mobile {
   position: relative;
@@ -1925,11 +2027,11 @@ a.btn-auth {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.45rem 0.65rem;
-  padding: 0.65rem 0.85rem;
+  gap: 0.35rem 0.45rem;
+  padding: 0;
 }
 .results-sort-label {
-  font-size: 0.82rem;
+  font-size: 0.74rem;
   color: var(--text-muted);
   white-space: nowrap;
   flex-shrink: 0;
@@ -1937,9 +2039,13 @@ a.btn-auth {
 .results-sort-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.28rem;
   flex: 1;
   min-width: 0;
+}
+.results-sort-chips .chip-btn {
+  font-size: 0.74rem;
+  padding: 0.22rem 0.52rem;
 }
 .sort-dir-btn {
   color: var(--cyan-bright);
@@ -2087,93 +2193,21 @@ a.btn-auth {
     border-radius: 6px;
   }
 }
-.results-nav {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem 1rem;
-  padding: 0.85rem 1rem;
-}
-.results-search {
-  display: grid;
-  gap: 0.35rem;
-  padding: 0.75rem 1rem;
-}
-.results-search-label {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-}
-.results-search-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-  align-items: center;
-}
-.results-search-input {
-  flex: 1 1 12rem;
-  min-width: 0;
-  padding: 0.48rem 0.65rem;
-  border-radius: 8px;
-  border: 1px solid rgba(0, 212, 255, 0.22);
-  background: rgba(7, 11, 20, 0.55);
-  color: var(--text);
-  font-size: 0.9rem;
-}
-.results-search-btn {
-  flex-shrink: 0;
-  min-width: 5.5rem;
-}
-.results-type-toggle {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.55rem 0.75rem;
-}
-.results-type-toggle .btns {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-.results-type-toggle .btns button {
-  border: 1px solid rgba(148, 183, 205, 0.28);
-  background: rgba(7, 11, 20, 0.45);
-  color: var(--text-dim);
-  border-radius: 999px;
-  padding: 0.28rem 0.72rem;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-.results-type-toggle .btns button.active {
-  color: var(--cyan-bright);
-  border-color: rgba(0, 212, 255, 0.45);
-  background: rgba(0, 212, 255, 0.1);
-}
 .back-btn {
   flex-shrink: 0;
   border: 1px solid rgba(148, 183, 205, 0.35);
-  background: rgba(7, 11, 20, 0.55);
+  background: rgba(7, 11, 20, 0.85);
   color: var(--text-dim);
-  border-radius: 8px;
-  padding: 0.42rem 0.85rem;
-  font-size: 0.84rem;
+  border-radius: 7px;
+  padding: 0.32rem 0.62rem;
+  font-size: 0.78rem;
   cursor: pointer;
+  position: relative;
+  z-index: 1;
 }
 .back-btn:hover {
   border-color: rgba(0, 212, 255, 0.45);
   color: var(--cyan-bright);
-}
-.results-copy {
-  min-width: 0;
-  flex: 1;
-}
-.results-title {
-  margin: 0;
-  font-size: 1.15rem;
-  font-weight: 650;
-}
-.results-summary {
-  margin: 0.25rem 0 0;
-  font-size: 0.84rem;
 }
 
 .workspace {
