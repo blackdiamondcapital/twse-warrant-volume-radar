@@ -64,7 +64,7 @@ export async function filterMasterRowsClient(
   const needGrade = !!gradeFilter
   if ((!needTa && !needGrade && !gradeOnly) || !rows?.length) return rows
 
-  const barLimit = taFilters?.fibAt100
+  const barLimit = (taFilters?.fibAt0 || taFilters?.fibAt100)
     ? (timeseriesLimitDays ?? FIB_TIMESERIES_LIMIT_DAYS)
     : (timeseriesLimitDays ?? TIMESERIES_LIMIT_DAYS)
 

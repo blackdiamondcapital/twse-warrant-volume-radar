@@ -21,10 +21,9 @@ import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { buildMasterSearchParams } from './utils/masterSearchParams.js'
 import { filterMasterRowsByQuery, isCodeLikeMasterQuery, buildStockCodeLookupFilters } from './utils/masterSearchMatch.js'
-import { filterMasterRowsClient } from './utils/taScreenFilter.js'
+import { filterMasterRowsClient, enrichMasterRowsWithGrades, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
 import { isUnexpiredWarrant } from './utils/warrantDisplay.js'
-import { enrichMasterRowsWithGrades, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
-import { hasActiveTaFilters } from './lib/taScreenRules.js'
+import { hasActiveTaFilters, hasClientOnlyTaFilters, pickClientOnlyTaFilters } from './lib/taScreenRules.js'
 import { getCarouselLimitForUser } from './utils/planAccess.js'
 
 const {
@@ -191,7 +190,9 @@ async function enrichCodeQueryGrades(rows) {
 const taFilters = reactive({
   heikinFirstRed: false,
   ma5gtMa10: false,
+  fibAt0: false,
   fibAt100: false,
+  duoKongCrossUp: false,
 })
 
 const masterRows = ref([])
@@ -381,7 +382,9 @@ const masterSearchSummary = computed(() => {
   const ta = []
   if (taFilters.heikinFirstRed) ta.push('神奇K線第一根紅')
   if (taFilters.ma5gtMa10) ta.push('5均>10均')
+  if (taFilters.fibAt0) ta.push('黃金切割0%')
   if (taFilters.fibAt100) ta.push('黃金切割100%')
+  if (taFilters.duoKongCrossUp) ta.push('剛站上多空線')
   if (ta.length) parts.push(ta.join('＋'))
   if (ta.length) parts.unshift('日線')
   return parts.length ? parts.join(' · ') : '全部未到期權證'
@@ -476,12 +479,13 @@ async function loadMaster() {
       let rows = applyMasterSort(
         filterMasterRowsByQuery(keepUnexpiredRows(data.data || []), filters.q),
       )
-      if (taFilters.fibAt100) {
-        statusText.value = '黃金切割 100% 比對中…'
+      if (hasClientOnlyTaFilters(taFilters)) {
+        const clientTa = pickClientOnlyTaFilters(taFilters)
+        statusText.value = '技術面逐檔比對中…'
         rows = await filterMasterRowsClient(rows, {
-          taFilters: { fibAt100: true },
+          taFilters: clientTa,
           onProgress: ({ done, total, matched }) => {
-            statusText.value = `黃金切割 100%… ${done.toLocaleString()} / ${total.toLocaleString()} 檔（符合 ${matched.toLocaleString()}）`
+            statusText.value = `技術面比對… ${done.toLocaleString()} / ${total.toLocaleString()} 檔（符合 ${matched.toLocaleString()}）`
           },
         })
       }
@@ -815,7 +819,9 @@ function toggleTaFilter(key) {
 function clearTaFilters() {
   taFilters.heikinFirstRed = false
   taFilters.ma5gtMa10 = false
+  taFilters.fibAt0 = false
   taFilters.fibAt100 = false
+  taFilters.duoKongCrossUp = false
   filters.page = 1
   if (showMasterResults.value) loadMaster()
 }
@@ -1026,8 +1032,22 @@ onUnmounted(() => {
           <span class="ta-period-badge">日線</span>
           <h3>技術分析</h3>
         </div>
-        <p class="ta-hint muted">權證日線篩選；可掃<strong>全市場</strong>（未填標的時）。黃金切割100%：收盤接近整段日線最低點（與圖表黃金切割率 100% 線一致）。</p>
+        <p class="ta-hint muted">權證日線篩選；可掃<strong>全市場</strong>（未填標的時）。黃金切割 0%／100%：收盤接近整段日線最高／最低點（與圖表一致）；剛站上多空線：最新收盤上穿 Hull 多空線（週期 77）。</p>
         <div class="ta-chip-row">
+          <button
+            type="button"
+            class="chip-btn"
+            :class="{ active: taFilters.duoKongCrossUp }"
+            title="最新收盤站上多空線，且前一日收在線下或貼線"
+            @click="toggleTaFilter('duoKongCrossUp')"
+          >剛站上多空線</button>
+          <button
+            type="button"
+            class="chip-btn"
+            :class="{ active: taFilters.fibAt0 }"
+            title="最新收盤接近日線區間最高價（黃金切割 0%）"
+            @click="toggleTaFilter('fibAt0')"
+          >黃金切割 0%</button>
           <button
             type="button"
             class="chip-btn"

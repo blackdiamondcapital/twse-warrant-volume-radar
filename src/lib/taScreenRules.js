@@ -1,4 +1,5 @@
-import { calcSMA, mapBars } from './indicators'
+import { calcSMA, calcDuoKongLine, mapBars } from './indicators'
+import { DEFAULT_DUO_KONG_PERIOD } from './chartTheme.js'
 
 /** 對齊主站 StockChartECharts 動態轉折（小不點）預設參數 */
 export const DEFAULT_GOLDEN_WAVE_PARAMS = {
@@ -106,20 +107,41 @@ export function calcFibLevelsFromBars(bars) {
 }
 
 /**
- * 最新收盤（或當根低點）接近黃金切割 100% 價位（整段日線最低點）。
+ * 最新收盤接近指定黃金切割價位（0% = 區間最高、100% = 區間最低）。
+ * @param {number} ratio 0 或 1
  * @param {number} toleranceRatio 容許誤差占區間振幅比例，預設 1.5%
  */
-export function isPriceAtFib100(bars, toleranceRatio = 0.015) {
+export function isPriceAtFibRatio(bars, ratio, toleranceRatio = 0.015) {
   const fib = calcFibLevelsFromBars(bars)
   if (!fib) return false
+  const level = fib.levels.find((l) => l.ratio === ratio)
+  if (!level) return false
   const ohlc = mapBars(bars).filter((b) => b.close != null)
   const last = ohlc[ohlc.length - 1]
   if (!last) return false
   const tol = Math.max(fib.range * toleranceRatio, fib.globalHigh * 0.005)
   const close = Number(last.close)
-  const low = last.low != null ? Number(last.low) : close
   if (!Number.isFinite(close)) return false
-  return Math.abs(close - fib.fib100) <= tol || Math.abs(low - fib.fib100) <= tol
+  const target = level.value
+  if (ratio >= 1) {
+    const low = last.low != null ? Number(last.low) : close
+    return Math.abs(close - target) <= tol || Math.abs(low - target) <= tol
+  }
+  if (ratio <= 0) {
+    const high = last.high != null ? Number(last.high) : close
+    return Math.abs(close - target) <= tol || Math.abs(high - target) <= tol
+  }
+  return Math.abs(close - target) <= tol
+}
+
+/** 100% = 整段日線最低點 */
+export function isPriceAtFib100(bars, toleranceRatio = 0.015) {
+  return isPriceAtFibRatio(bars, 1, toleranceRatio)
+}
+
+/** 0% = 整段日線最高點 */
+export function isPriceAtFib0(bars, toleranceRatio = 0.015) {
+  return isPriceAtFibRatio(bars, 0, toleranceRatio)
 }
 
 /** 小不點：最新一根為紅柱，且前一根非紅柱（評等仍使用，選股已移除） */
@@ -178,6 +200,25 @@ export function isMa5AboveMa10(closes) {
   return ma5[i] != null && ma10[i] != null && ma5[i] > ma10[i]
 }
 
+/**
+ * 剛站上多空線：最新收盤 > 多空線，前一根收盤 <= 前一根多空線（週期對齊圖表預設 77）。
+ */
+export function isDuoKongCrossUp(closes, period = DEFAULT_DUO_KONG_PERIOD) {
+  if (!closes?.length || closes.length < 2) return false
+  const dk = calcDuoKongLine(closes, period)
+  const i = closes.length - 1
+  const prev = i - 1
+  const closeNow = closes[i]
+  const closePrev = closes[prev]
+  const dkNow = dk.base[i]
+  const dkPrev = dk.base[prev]
+  if (
+    closeNow == null || closePrev == null
+    || dkNow == null || dkPrev == null
+  ) return false
+  return closeNow > dkNow && closePrev <= dkPrev
+}
+
 export function evaluateTaSignals(bars) {
   const mapped = mapBars(bars).filter((b) => b.close != null)
   const ohlcBars = mapped.filter(
@@ -189,7 +230,9 @@ export function evaluateTaSignals(bars) {
     reversalFirstRed: isGoldenWaveFirstRed(closes, gwParams),
     heikinFirstRed: isHeikinFirstRed(ohlcBars),
     ma5gtMa10: isMa5AboveMa10(closes),
+    fibAt0: isPriceAtFib0(bars),
     fibAt100: isPriceAtFib100(bars),
+    duoKongCrossUp: isDuoKongCrossUp(closes),
   }
 }
 
@@ -198,8 +241,24 @@ export function passesTaFilters(signals, taFilters) {
   if (taFilters.reversalFirstRed && !signals.reversalFirstRed) return false
   if (taFilters.heikinFirstRed && !signals.heikinFirstRed) return false
   if (taFilters.ma5gtMa10 && !signals.ma5gtMa10) return false
+  if (taFilters.fibAt0 && !signals.fibAt0) return false
   if (taFilters.fibAt100 && !signals.fibAt100) return false
+  if (taFilters.duoKongCrossUp && !signals.duoKongCrossUp) return false
   return true
+}
+
+export const CLIENT_ONLY_TA_FILTER_KEYS = ['fibAt0', 'fibAt100', 'duoKongCrossUp']
+
+export function pickClientOnlyTaFilters(taFilters) {
+  const out = {}
+  for (const key of CLIENT_ONLY_TA_FILTER_KEYS) {
+    if (taFilters?.[key]) out[key] = true
+  }
+  return out
+}
+
+export function hasClientOnlyTaFilters(taFilters) {
+  return CLIENT_ONLY_TA_FILTER_KEYS.some((key) => taFilters?.[key])
 }
 
 export function hasActiveTaFilters(taFilters) {
@@ -207,6 +266,8 @@ export function hasActiveTaFilters(taFilters) {
     taFilters?.reversalFirstRed
     || taFilters?.heikinFirstRed
     || taFilters?.ma5gtMa10
+    || taFilters?.fibAt0
     || taFilters?.fibAt100
+    || taFilters?.duoKongCrossUp
   )
 }
