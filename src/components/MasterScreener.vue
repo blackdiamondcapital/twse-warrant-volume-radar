@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { warrantTypeLabel, isPutWarrant, resolveDaysToExpiry } from '../utils/warrantDisplay.js'
+import { warrantTypeLabel, isPutWarrant, resolveDaysToExpiry, resolveExpiryDate } from '../utils/warrantDisplay.js'
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
@@ -79,8 +79,13 @@ function fmt(n, digits = 2) {
   return Number(n).toLocaleString(undefined, { maximumFractionDigits: digits })
 }
 
-function fmtExpiryShort(date) {
-  if (!date) return '—'
+function fmtExpiry(row) {
+  return resolveExpiryDate(row) ?? row.expiry_date ?? '—'
+}
+
+function fmtExpiryShort(row) {
+  const date = fmtExpiry(row)
+  if (!date || date === '—') return '—'
   const m = String(date).match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (!m) return date
   return `${Number(m[2])}/${Number(m[3])}`
@@ -149,13 +154,29 @@ function gradeClass(grade) {
       <div v-if="loading" class="empty muted">查詢中…</div>
       <div v-else-if="!rows.length" class="empty muted">沒有符合條件的權證</div>
       <div v-else class="table-wrap">
-        <table class="data">
+        <table class="data master-table">
+          <colgroup>
+            <col class="col-code" />
+            <col v-if="showGrade" class="col-grade" />
+            <col class="col-name" />
+            <col class="col-underlying" />
+            <col class="col-close" />
+            <col class="col-volume" />
+            <col class="col-exercise" />
+            <col class="col-days" />
+            <col class="col-expiry" />
+          </colgroup>
           <thead>
             <tr>
               <th
                 v-for="col in columns"
                 :key="col.key"
-                :class="[col.align, col.key === 'expiry' ? 'cell-expiry' : '', col.key === 'days' ? 'cell-days' : '']"
+                :class="[
+                  col.align,
+                  `col-head-${col.key}`,
+                  col.key === 'expiry' ? 'cell-expiry' : '',
+                  col.key === 'days' ? 'cell-days' : '',
+                ]"
               >
                 <span class="col-label-full">{{ col.label }}</span>
                 <span v-if="col.shortLabelLines" class="col-label-short col-label-short--stacked">
@@ -172,32 +193,36 @@ function gradeClass(grade) {
               :class="{ selected: selectedCode === row.warrant_code }"
               @click="emit('select', row)"
             >
-              <td class="mono">{{ row.warrant_code }}</td>
-              <td v-if="showGrade" class="num grade-cell">
+              <td class="mono col-code">{{ row.warrant_code }}</td>
+              <td v-if="showGrade" class="num grade-cell col-grade">
                 <span
                   v-if="row.warrant_grade"
                   :class="gradeClass(row.warrant_grade)"
                 >{{ row.warrant_grade }}</span>
                 <span v-else class="grade-badge grade-badge--none">—</span>
               </td>
-              <td>{{ row.warrant_name }}</td>
-              <td class="underlying">
-                <span v-if="row.underlying_code" class="mono code">{{ row.underlying_code }}</span>
+              <td class="col-name" :title="row.warrant_name || ''">{{ row.warrant_name }}</td>
+              <td class="underlying col-underlying">
+                <span v-if="row.underlying_code || row.underlying_name" class="underlying-main">
+                  <span v-if="row.underlying_code" class="mono code">{{ row.underlying_code }}</span>
+                  <span v-if="row.underlying_name" class="underlying-name">{{ row.underlying_name }}</span>
+                </span>
+                <span v-else class="muted">—</span>
                 <span
                   v-if="warrantTypeLabel(row)"
                   class="tag type-sub"
                   :class="isPutWarrant(row) ? 'put' : 'call'"
                 >{{ warrantTypeLabel(row) }}</span>
               </td>
-              <td class="num mono">{{ fmt(row.close_price, 2) }}</td>
-              <td class="num mono">{{ fmt(row.volume, 0) }}</td>
-              <td class="num mono">{{ fmt(row.latest_exercise_price) }}</td>
-              <td class="num mono cell-days" :class="daysClass(row)">
+              <td class="num mono col-close">{{ fmt(row.close_price, 2) }}</td>
+              <td class="num mono col-volume">{{ fmt(row.volume, 0) }}</td>
+              <td class="num mono col-exercise">{{ fmt(row.latest_exercise_price) }}</td>
+              <td class="num mono cell-days col-days" :class="daysClass(row)">
                 {{ fmtDays(row) }}
               </td>
-              <td class="mono cell-expiry" :title="row.expiry_date || ''">
-                <span class="expiry-full">{{ row.expiry_date || '—' }}</span>
-                <span class="expiry-short">{{ fmtExpiryShort(row.expiry_date) }}</span>
+              <td class="mono cell-expiry col-expiry" :title="fmtExpiry(row)">
+                <span class="expiry-full">{{ fmtExpiry(row) }}</span>
+                <span class="expiry-short">{{ fmtExpiryShort(row) }}</span>
               </td>
             </tr>
           </tbody>
@@ -222,18 +247,40 @@ function gradeClass(grade) {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+.master-table {
+  table-layout: fixed;
+  min-width: 860px;
+}
+.master-table .col-code { width: 5.6rem; }
+.master-table .col-grade { width: 2.6rem; }
+.master-table .col-name { width: 11rem; }
+.master-table .col-underlying { width: 6.5rem; }
+.master-table .col-close { width: 4rem; }
+.master-table .col-volume { width: 4.8rem; }
+.master-table .col-exercise { width: 4.2rem; }
+.master-table .col-days { width: 3.4rem; }
+.master-table .col-expiry { width: 6.2rem; }
+.screener table.data th,
+.screener table.data td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+.screener table.data th.num,
+.screener table.data td.num {
+  text-align: right;
+}
 .screener table.data th.cell-expiry,
 .screener table.data td.cell-expiry {
-  width: 1%;
-  max-width: 3.25rem;
-  padding-left: 0.28rem;
-  padding-right: 0.28rem;
+  text-align: center;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
 }
 .screener table.data th.cell-days,
 .screener table.data td.cell-days {
-  width: 1%;
-  padding-left: 0.2rem;
-  padding-right: 0.2rem;
+  text-align: right;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
 }
 .screener table.data th.cell-days {
   white-space: normal;
@@ -248,7 +295,11 @@ function gradeClass(grade) {
 .screener table.data td.cell-days {
   white-space: nowrap;
 }
+.screener table.data td.col-name {
+  white-space: nowrap;
+}
 .expiry-short { display: none; }
+.expiry-full { display: inline; }
 .head-row {
   display: flex;
   align-items: center;
@@ -389,12 +440,27 @@ function gradeClass(grade) {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.15rem;
+  gap: 0.2rem;
   line-height: 1.25;
+}
+.underlying-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+  max-width: 100%;
 }
 .underlying .code {
   font-size: 0.84rem;
   font-weight: 600;
+}
+.underlying-name {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 .type-sub {
   font-size: 0.68rem;
@@ -414,34 +480,20 @@ function gradeClass(grade) {
     padding-left: 0.45rem;
     padding-right: 0.45rem;
   }
+  .master-table {
+    min-width: 760px;
+  }
   .col-label-full { display: none; }
   .col-label-short { display: inline; }
   .screener table.data th,
   .screener table.data td {
-    padding: 0.38rem 0.22rem;
-    font-size: 0.74rem;
-  }
-  .screener table.data th.cell-expiry,
-  .screener table.data td.cell-expiry {
-    max-width: 2.35rem;
-    padding-left: 0.1rem;
-    padding-right: 0.1rem;
-    font-size: 0.62rem;
-    letter-spacing: -0.03em;
-  }
-  .screener table.data th.cell-days,
-  .screener table.data td.cell-days {
-    max-width: 2.4rem;
-    padding-left: 0.08rem;
-    padding-right: 0.08rem;
+    padding: 0.42rem 0.3rem;
+    font-size: 0.76rem;
   }
   .screener table.data th.cell-days .col-label-short--stacked {
     display: flex;
-    font-size: 0.58rem;
+    font-size: 0.62rem;
     letter-spacing: -0.04em;
-  }
-  .screener table.data td.cell-days {
-    font-size: 0.72rem;
   }
   .expiry-full { display: none; }
   .expiry-short { display: inline; }
