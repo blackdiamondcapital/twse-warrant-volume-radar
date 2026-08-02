@@ -83,7 +83,7 @@ const filters = reactive({
   sort: 'expiry',
   sortDir: 'asc',
   page: 1,
-  pageSize: 50,
+  pageSize: 200,
 })
 
 const MASTER_SORT_OPTIONS = [

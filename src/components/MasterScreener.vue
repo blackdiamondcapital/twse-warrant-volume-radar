@@ -7,7 +7,7 @@ const props = defineProps({
   total: { type: Number, default: 0 },
   statsTotal: { type: Number, default: 0 },
   page: { type: Number, default: 1 },
-  pageSize: { type: Number, default: 50 },
+  pageSize: { type: Number, default: 200 },
   loading: { type: Boolean, default: false },
   exporting: { type: Boolean, default: false },
   selectedCode: { type: String, default: '' },
@@ -203,10 +203,7 @@ function gradeClass(grade) {
               </td>
               <td class="col-name" :title="row.warrant_name || ''">{{ row.warrant_name }}</td>
               <td class="underlying col-underlying">
-                <span v-if="row.underlying_code || row.underlying_name" class="underlying-main">
-                  <span v-if="row.underlying_code" class="mono code">{{ row.underlying_code }}</span>
-                  <span v-if="row.underlying_name" class="underlying-name">{{ row.underlying_name }}</span>
-                </span>
+                <span v-if="row.underlying_code" class="mono code">{{ row.underlying_code }}</span>
                 <span v-else class="muted">—</span>
                 <span
                   v-if="warrantTypeLabel(row)"
@@ -457,24 +454,9 @@ function gradeClass(grade) {
   gap: 0.2rem;
   line-height: 1.25;
 }
-.underlying-main {
-  display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
-  min-width: 0;
-  max-width: 100%;
-}
 .underlying .code {
   font-size: 0.84rem;
   font-weight: 600;
-}
-.underlying-name {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
 }
 .type-sub {
   font-size: 0.68rem;

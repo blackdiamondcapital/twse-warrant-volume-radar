@@ -14,7 +14,7 @@ export function resolveUnexpiredMasterFilters(filters) {
 
 export function buildMasterSearchParams(filters, numOrUndef, {
   page = 1,
-  pageSize = 50,
+  pageSize = 200,
   sort,
   sortDir,
 } = {}) {
