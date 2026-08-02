@@ -16,14 +16,14 @@ import MasterScreener from './components/MasterScreener.vue'
 import RankingPanel from './components/RankingPanel.vue'
 import StockChartECharts from './components/StockChartECharts.vue'
 import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
-import { exportMasterToExcel, fetchMasterRowsUpTo, fetchMasterRowsForQuery } from './utils/exportMasterExcel.js'
+import { exportMasterToExcel, fetchAllMasterRows, fetchMasterRowsUpTo, fetchMasterRowsForQuery } from './utils/exportMasterExcel.js'
 import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { buildMasterSearchParams } from './utils/masterSearchParams.js'
 import { filterMasterRowsByQuery, isCodeLikeMasterQuery, buildStockCodeLookupFilters } from './utils/masterSearchMatch.js'
 import { filterMasterRowsClient, enrichMasterRowsWithGrades, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
 import { isUnexpiredWarrant } from './utils/warrantDisplay.js'
-import { hasActiveTaFilters, hasClientOnlyTaFilters, pickClientOnlyTaFilters } from './lib/taScreenRules.js'
+import { hasActiveTaFilters, hasBackendTaFilters, hasClientOnlyTaFilters, pickClientOnlyTaFilters } from './lib/taScreenRules.js'
 import { getCarouselLimitForUser } from './utils/planAccess.js'
 
 const {
@@ -190,8 +190,8 @@ async function enrichCodeQueryGrades(rows) {
 const taFilters = reactive({
   heikinFirstRed: false,
   ma5gtMa10: false,
-  fibAt0: false,
-  fibAt100: false,
+  closeNearHigh: false,
+  closeNearLow: false,
   duoKongCrossUp: false,
 })
 
@@ -382,8 +382,8 @@ const masterSearchSummary = computed(() => {
   const ta = []
   if (taFilters.heikinFirstRed) ta.push('神奇K線第一根紅')
   if (taFilters.ma5gtMa10) ta.push('5均>10均')
-  if (taFilters.fibAt0) ta.push('黃金切割0%')
-  if (taFilters.fibAt100) ta.push('黃金切割100%')
+  if (taFilters.closeNearHigh) ta.push('收盤近最高')
+  if (taFilters.closeNearLow) ta.push('收盤近最低')
   if (taFilters.duoKongCrossUp) ta.push('剛站上多空線')
   if (ta.length) parts.push(ta.join('＋'))
   if (ta.length) parts.unshift('日線')
@@ -464,21 +464,40 @@ async function loadMaster() {
 
     if (needsClientSideMasterFilter(taFilters, '', { scopedSearch: scoped })) {
       const fullMarket = wantClientFilter && !scoped
-      statusText.value = fullMarket ? '後端全市場技術掃描中…' : '後端技術面篩選中…'
       const sortKey = filters.sort === 'grade' ? 'volume' : (filters.sort || 'volume')
-      const data = await fetchTaScreen({
-        ...buildMasterSearchParams(filters, numOrUndef, {
-          page: 1,
-          pageSize: 5000,
-          sort: sortKey,
-          sortDir: filters.sortDir || 'desc',
-        }),
-        ma5gtMa10: taFilters.ma5gtMa10 ? 1 : undefined,
-        heikinFirstRed: taFilters.heikinFirstRed ? 1 : undefined,
-      })
-      let rows = applyMasterSort(
-        filterMasterRowsByQuery(keepUnexpiredRows(data.data || []), filters.q),
-      )
+      let rows = []
+      let candidates = 0
+      let elapsedMs = null
+
+      if (hasBackendTaFilters(taFilters)) {
+        statusText.value = fullMarket ? '後端全市場技術掃描中…' : '後端技術面篩選中…'
+        const data = await fetchTaScreen({
+          ...buildMasterSearchParams(filters, numOrUndef, {
+            page: 1,
+            pageSize: 5000,
+            sort: sortKey,
+            sortDir: filters.sortDir || 'desc',
+          }),
+          ma5gtMa10: taFilters.ma5gtMa10 ? 1 : undefined,
+          heikinFirstRed: taFilters.heikinFirstRed ? 1 : undefined,
+        })
+        rows = applyMasterSort(
+          filterMasterRowsByQuery(keepUnexpiredRows(data.data || []), filters.q),
+        )
+        candidates = Number(data.candidates || rows.length)
+        elapsedMs = data.elapsedMs
+      } else {
+        statusText.value = fullMarket ? '載入全市場主檔…' : '載入候選主檔…'
+        const raw = await fetchAllMasterRows(filters, numOrUndef, {
+          onProgress: ({ scanned, apiTotal }) => {
+            statusText.value = `載入候選… ${scanned.toLocaleString()} / ${apiTotal.toLocaleString()} 檔`
+          },
+          rowFilter: isUnexpiredWarrant,
+        })
+        rows = applyMasterSort(filterMasterRowsByQuery(raw, filters.q))
+        candidates = rows.length
+      }
+
       if (hasClientOnlyTaFilters(taFilters)) {
         const clientTa = pickClientOnlyTaFilters(taFilters)
         statusText.value = '技術面逐檔比對中…'
@@ -494,9 +513,9 @@ async function loadMaster() {
       clientFilterActive.value = true
       const page = Math.max(1, filters.page)
       paginateClientFilteredRows(page)
-      const sec = data.elapsedMs != null ? ` · ${(Number(data.elapsedMs) / 1000).toFixed(1)}s` : ''
+      const sec = elapsedMs != null ? ` · ${(Number(elapsedMs) / 1000).toFixed(1)}s` : ''
       const scopeLabel = fullMarket ? '全市場' : '條件範圍'
-      statusText.value = `${scopeLabel}技術篩選完成：符合 ${masterTotal.value.toLocaleString()} 檔（候選 ${Number(data.candidates || 0).toLocaleString()}）${sec}`
+      statusText.value = `${scopeLabel}技術篩選完成：符合 ${masterTotal.value.toLocaleString()} 檔（候選 ${candidates.toLocaleString()}）${sec}`
       return
     }
 
@@ -819,8 +838,8 @@ function toggleTaFilter(key) {
 function clearTaFilters() {
   taFilters.heikinFirstRed = false
   taFilters.ma5gtMa10 = false
-  taFilters.fibAt0 = false
-  taFilters.fibAt100 = false
+  taFilters.closeNearHigh = false
+  taFilters.closeNearLow = false
   taFilters.duoKongCrossUp = false
   filters.page = 1
   if (showMasterResults.value) loadMaster()
@@ -1032,7 +1051,7 @@ onUnmounted(() => {
           <span class="ta-period-badge">日線</span>
           <h3>技術分析</h3>
         </div>
-        <p class="ta-hint muted">權證日線篩選；可掃<strong>全市場</strong>（未填標的時）。黃金切割 0%／100%：收盤接近整段日線最高／最低點（與圖表一致）；剛站上多空線：最新收盤上穿 Hull 多空線（週期 45）。</p>
+        <p class="ta-hint muted">權證日線篩選；可掃<strong>全市場</strong>（未填標的時）。收盤近最高／最低：僅以<strong>收盤價</strong>比對約 250 日區間高低（兩者都勾＝符合任一）；剛站上多空線：週期 45。</p>
         <div class="ta-chip-row">
           <button
             type="button"
@@ -1044,17 +1063,17 @@ onUnmounted(() => {
           <button
             type="button"
             class="chip-btn"
-            :class="{ active: taFilters.fibAt0 }"
-            title="最新收盤接近日線區間最高價（黃金切割 0%）"
-            @click="toggleTaFilter('fibAt0')"
-          >黃金切割 0%</button>
+            :class="{ active: taFilters.closeNearHigh }"
+            title="最新收盤價接近日線收盤價區間最高（約 250 日）"
+            @click="toggleTaFilter('closeNearHigh')"
+          >收盤近最高</button>
           <button
             type="button"
             class="chip-btn"
-            :class="{ active: taFilters.fibAt100 }"
-            title="最新收盤接近日線區間最低價（黃金切割 100%）"
-            @click="toggleTaFilter('fibAt100')"
-          >黃金切割 100%</button>
+            :class="{ active: taFilters.closeNearLow }"
+            title="最新收盤價接近日線收盤價區間最低（約 250 日）"
+            @click="toggleTaFilter('closeNearLow')"
+          >收盤近最低</button>
           <button
             type="button"
             class="chip-btn"
