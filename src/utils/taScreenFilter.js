@@ -3,15 +3,19 @@ import { evaluateTaSignals, hasActiveTaFilters, passesTaFilters } from '../lib/t
 import { gradeWarrant, buildGradeDetail } from '../lib/warrantGrade.js'
 
 const TIMESERIES_LIMIT_DAYS = 90
-const CLOSE_RANGE_TIMESERIES_LIMIT_DAYS = 250
-/** 全市場 client-side 技術掃描上限（依成交量排序，避免 3 萬檔逐檔 K 線） */
-export const TA_FULL_MARKET_SCAN_CAP = 3000
+const DUO_KONG_TIMESERIES_LIMIT_DAYS = 60
+const CLOSE_RANGE_TIMESERIES_LIMIT_DAYS = 120
+/** 全市場 client-side 技術掃描上限（依成交量排序） */
+export const TA_FULL_MARKET_SCAN_CAP = 600
 /** 有篩選條件時 client-side 技術掃描上限 */
-export const TA_SCOPED_SCAN_CAP = 5000
-export const TA_SCAN_CONCURRENCY = 24
+export const TA_SCOPED_SCAN_CAP = 1200
+/** 後端 ta-screen 後再接 client 篩選時的上限 */
+export const TA_BACKEND_CLIENT_CAP = 1200
+export const TA_SCAN_CONCURRENCY = 40
 const DEFAULT_CONCURRENCY = TA_SCAN_CONCURRENCY
 
 const barCache = new Map()
+const barInflight = new Map()
 
 function cacheKey(code, limitDays) {
   return `${code}:${limitDays}`
@@ -20,14 +24,23 @@ function cacheKey(code, limitDays) {
 async function fetchBarsForCode(code, limitDays = TIMESERIES_LIMIT_DAYS) {
   const key = cacheKey(code, limitDays)
   if (barCache.has(key)) return barCache.get(key)
-  const resp = await fetchTimeseries({ code, limitDays })
-  const bars = Array.isArray(resp?.data) ? resp.data : []
-  barCache.set(key, bars)
-  return bars
+  if (barInflight.has(key)) return barInflight.get(key)
+  const pending = fetchTimeseries({ code, limitDays })
+    .then((resp) => {
+      const bars = Array.isArray(resp?.data) ? resp.data : []
+      barCache.set(key, bars)
+      return bars
+    })
+    .finally(() => {
+      barInflight.delete(key)
+    })
+  barInflight.set(key, pending)
+  return pending
 }
 
 export function clearMasterBarCache() {
   barCache.clear()
+  barInflight.clear()
 }
 
 export function needsClientSideMasterFilter(taFilters, gradeFilter = '', { scopedSearch = false } = {}) {
@@ -67,11 +80,15 @@ export async function filterMasterRowsClient(
 ) {
   const needTa = hasActiveTaFilters(taFilters)
   const needGrade = !!gradeFilter
+  const enrichGrade = needGrade || gradeOnly
   if ((!needTa && !needGrade && !gradeOnly) || !rows?.length) return rows
 
-  const barLimit = (taFilters?.closeNearHigh || taFilters?.closeNearLow)
-    ? (timeseriesLimitDays ?? CLOSE_RANGE_TIMESERIES_LIMIT_DAYS)
-    : (timeseriesLimitDays ?? TIMESERIES_LIMIT_DAYS)
+  let barLimit = timeseriesLimitDays ?? TIMESERIES_LIMIT_DAYS
+  if (taFilters?.closeNearHigh || taFilters?.closeNearLow) {
+    barLimit = timeseriesLimitDays ?? CLOSE_RANGE_TIMESERIES_LIMIT_DAYS
+  } else if (taFilters?.duoKongCrossUp) {
+    barLimit = timeseriesLimitDays ?? DUO_KONG_TIMESERIES_LIMIT_DAYS
+  }
 
   const list = [...rows]
   const matched = []
@@ -109,13 +126,15 @@ export async function filterMasterRowsClient(
           continue
         }
         const enriched = { ...row, bar_count: bars.length }
-        const grade = gradeWarrant(enriched, { taSignals: signals })
-        enriched.warrant_grade = grade
-        enriched.grade_detail = buildGradeDetail(enriched, { taSignals: signals })
-        if (needGrade && grade !== gradeFilter) {
-          done += 1
-          onProgress?.({ done, total: list.length, matched: matched.length })
-          continue
+        if (enrichGrade) {
+          const grade = gradeWarrant(enriched, { taSignals: signals })
+          enriched.warrant_grade = grade
+          enriched.grade_detail = buildGradeDetail(enriched, { taSignals: signals })
+          if (needGrade && grade !== gradeFilter) {
+            done += 1
+            onProgress?.({ done, total: list.length, matched: matched.length })
+            continue
+          }
         }
         pushMatch(enriched)
       } catch {

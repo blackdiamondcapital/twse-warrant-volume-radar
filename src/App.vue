@@ -21,7 +21,7 @@ import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { buildMasterSearchParams } from './utils/masterSearchParams.js'
 import { filterMasterRowsByQuery, isCodeLikeMasterQuery, buildStockCodeLookupFilters } from './utils/masterSearchMatch.js'
-import { filterMasterRowsClient, enrichMasterRowsWithGrades, needsClientSideMasterFilter, TA_FULL_MARKET_SCAN_CAP, TA_SCOPED_SCAN_CAP } from './utils/taScreenFilter.js'
+import { filterMasterRowsClient, enrichMasterRowsWithGrades, needsClientSideMasterFilter, TA_FULL_MARKET_SCAN_CAP, TA_SCOPED_SCAN_CAP, TA_BACKEND_CLIENT_CAP } from './utils/taScreenFilter.js'
 import { isUnexpiredWarrant } from './utils/warrantDisplay.js'
 import { hasActiveTaFilters, hasBackendTaFilters, hasClientOnlyTaFilters, pickClientOnlyTaFilters } from './lib/taScreenRules.js'
 import { getCarouselLimitForUser } from './utils/planAccess.js'
@@ -471,10 +471,11 @@ async function loadMaster() {
 
       if (hasBackendTaFilters(taFilters)) {
         statusText.value = fullMarket ? '後端全市場技術掃描中…' : '後端技術面篩選中…'
+        const taScreenCap = hasClientOnlyTaFilters(taFilters) ? TA_BACKEND_CLIENT_CAP : 5000
         const data = await fetchTaScreen({
           ...buildMasterSearchParams(filters, numOrUndef, {
             page: 1,
-            pageSize: 5000,
+            pageSize: taScreenCap,
             sort: sortKey,
             sortDir: filters.sortDir || 'desc',
           }),
@@ -1053,7 +1054,7 @@ onUnmounted(() => {
           <span class="ta-period-badge">日線</span>
           <h3>技術分析</h3>
         </div>
-        <p class="ta-hint muted">權證日線篩選；未填標的時掃<strong>成交量前 3000 檔</strong>（較快）。收盤近最高／最低：僅以收盤價比對約 250 日區間；剛站上多空線：週期 45。</p>
+        <p class="ta-hint muted">未填標的時掃<strong>成交量前 600 檔</strong>（約 30 秒內）。收盤近最高／最低：收盤價比對約 120 日區間；剛站上多空線：週期 45。查特定標的請輸入代號。</p>
         <div class="ta-chip-row">
           <button
             type="button"
