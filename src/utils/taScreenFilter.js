@@ -4,7 +4,12 @@ import { gradeWarrant, buildGradeDetail } from '../lib/warrantGrade.js'
 
 const TIMESERIES_LIMIT_DAYS = 90
 const CLOSE_RANGE_TIMESERIES_LIMIT_DAYS = 250
-const DEFAULT_CONCURRENCY = 14
+/** 全市場 client-side 技術掃描上限（依成交量排序，避免 3 萬檔逐檔 K 線） */
+export const TA_FULL_MARKET_SCAN_CAP = 3000
+/** 有篩選條件時 client-side 技術掃描上限 */
+export const TA_SCOPED_SCAN_CAP = 5000
+export const TA_SCAN_CONCURRENCY = 24
+const DEFAULT_CONCURRENCY = TA_SCAN_CONCURRENCY
 
 const barCache = new Map()
 

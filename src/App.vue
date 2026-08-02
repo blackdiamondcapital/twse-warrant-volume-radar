@@ -16,12 +16,12 @@ import MasterScreener from './components/MasterScreener.vue'
 import RankingPanel from './components/RankingPanel.vue'
 import StockChartECharts from './components/StockChartECharts.vue'
 import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
-import { exportMasterToExcel, fetchAllMasterRows, fetchMasterRowsUpTo, fetchMasterRowsForQuery } from './utils/exportMasterExcel.js'
+import { exportMasterToExcel, fetchMasterRowsUpTo, fetchMasterRowsForQuery } from './utils/exportMasterExcel.js'
 import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { buildMasterSearchParams } from './utils/masterSearchParams.js'
 import { filterMasterRowsByQuery, isCodeLikeMasterQuery, buildStockCodeLookupFilters } from './utils/masterSearchMatch.js'
-import { filterMasterRowsClient, enrichMasterRowsWithGrades, needsClientSideMasterFilter } from './utils/taScreenFilter.js'
+import { filterMasterRowsClient, enrichMasterRowsWithGrades, needsClientSideMasterFilter, TA_FULL_MARKET_SCAN_CAP, TA_SCOPED_SCAN_CAP } from './utils/taScreenFilter.js'
 import { isUnexpiredWarrant } from './utils/warrantDisplay.js'
 import { hasActiveTaFilters, hasBackendTaFilters, hasClientOnlyTaFilters, pickClientOnlyTaFilters } from './lib/taScreenRules.js'
 import { getCarouselLimitForUser } from './utils/planAccess.js'
@@ -487,14 +487,16 @@ async function loadMaster() {
         candidates = Number(data.candidates || rows.length)
         elapsedMs = data.elapsedMs
       } else {
-        statusText.value = fullMarket ? '載入全市場主檔…' : '載入候選主檔…'
-        const raw = await fetchAllMasterRows(filters, numOrUndef, {
-          onProgress: ({ scanned, apiTotal }) => {
-            statusText.value = `載入候選… ${scanned.toLocaleString()} / ${apiTotal.toLocaleString()} 檔`
-          },
-          rowFilter: isUnexpiredWarrant,
-        })
-        rows = applyMasterSort(filterMasterRowsByQuery(raw, filters.q))
+        const scanCap = fullMarket ? TA_FULL_MARKET_SCAN_CAP : TA_SCOPED_SCAN_CAP
+        statusText.value = fullMarket
+          ? `載入成交量前 ${scanCap.toLocaleString()} 檔…`
+          : '載入候選主檔…'
+        const raw = await fetchMasterRowsUpTo(
+          { ...filters, sort: sortKey, sortDir: filters.sortDir || 'desc' },
+          numOrUndef,
+          scanCap,
+        )
+        rows = applyMasterSort(filterMasterRowsByQuery(keepUnexpiredRows(raw), filters.q))
         candidates = rows.length
       }
 
@@ -514,7 +516,7 @@ async function loadMaster() {
       const page = Math.max(1, filters.page)
       paginateClientFilteredRows(page)
       const sec = elapsedMs != null ? ` · ${(Number(elapsedMs) / 1000).toFixed(1)}s` : ''
-      const scopeLabel = fullMarket ? '全市場' : '條件範圍'
+      const scopeLabel = fullMarket ? `全市場（成交量前 ${TA_FULL_MARKET_SCAN_CAP.toLocaleString()} 檔）` : '條件範圍'
       statusText.value = `${scopeLabel}技術篩選完成：符合 ${masterTotal.value.toLocaleString()} 檔（候選 ${candidates.toLocaleString()}）${sec}`
       return
     }
@@ -1051,7 +1053,7 @@ onUnmounted(() => {
           <span class="ta-period-badge">日線</span>
           <h3>技術分析</h3>
         </div>
-        <p class="ta-hint muted">權證日線篩選；可掃<strong>全市場</strong>（未填標的時）。收盤近最高／最低：僅以<strong>收盤價</strong>比對約 250 日區間高低（兩者都勾＝符合任一）；剛站上多空線：週期 45。</p>
+        <p class="ta-hint muted">權證日線篩選；未填標的時掃<strong>成交量前 3000 檔</strong>（較快）。收盤近最高／最低：僅以收盤價比對約 250 日區間；剛站上多空線：週期 45。</p>
         <div class="ta-chip-row">
           <button
             type="button"
