@@ -736,9 +736,13 @@ async function onExportMaster() {
       compact: true,
       individualStockOnly: true,
       unexpiredOnly: true,
-      onProgress: ({ phase, loaded, total }) => {
+      onProgress: ({ phase, loaded, scanned }) => {
         if (phase === 'load') {
-          statusText.value = `已選位置，載入主檔… ${loaded.toLocaleString()}${total ? ` / ${total.toLocaleString()}` : ''} 檔`
+          const excluded = Math.max(0, (scanned || 0) - (loaded || 0))
+          const suffix = excluded > 0
+            ? `（已排除指數類 ${excluded.toLocaleString()} 檔）`
+            : ''
+          statusText.value = `已選位置，載入未到期個股權證… ${loaded.toLocaleString()} 檔${suffix}`
         }
       },
     })

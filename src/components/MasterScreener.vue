@@ -69,7 +69,7 @@ const exportBtnTitle = computed(() => {
     if (props.total > 0) {
       return `匯出未到期個股權證代號（${props.total.toLocaleString()} 檔，不含評等）`
     }
-    return `匯出未到期個股權證代號（排除指數類與已到期，不含評等）`
+    return '匯出未到期個股權證代號（排除指數類與已到期，不含評等；筆數以實際匯入 Excel 為準）'
   }
   return '沒有可匯出的資料'
 })

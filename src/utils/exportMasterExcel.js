@@ -110,12 +110,14 @@ export async function fetchAllMasterRows(filters, numOrUndef, {
 } = {}) {
   const size = Math.min(200, Math.max(1, Number(pageSize) || EXPORT_PAGE_SIZE))
   const first = await fetchMasterSearch(buildSearchParams(filters, numOrUndef, 1, size))
-  const total = Number(first.total) || 0
+  const apiTotal = Number(first.total) || 0
   const keep = (rows) => (typeof rowFilter === 'function' ? rows.filter(rowFilter) : rows)
-  const allRows = keep(first.data || [])
-  onProgress?.({ loaded: allRows.length, total })
+  const firstRows = first.data || []
+  const allRows = keep(firstRows)
+  let scanned = firstRows.length
+  onProgress?.({ loaded: allRows.length, scanned, apiTotal })
 
-  const totalPages = Math.max(1, Math.ceil(total / size))
+  const totalPages = Math.max(1, Math.ceil(apiTotal / size))
   if (totalPages <= 1) return allRows
 
   const pages = []
@@ -127,8 +129,10 @@ export async function fetchAllMasterRows(filters, numOrUndef, {
       const page = pages[cursor]
       cursor += 1
       const data = await fetchMasterSearch(buildSearchParams(filters, numOrUndef, page, size))
-      allRows.push(...keep(data.data || []))
-      onProgress?.({ loaded: allRows.length, total })
+      const batch = data.data || []
+      scanned += batch.length
+      allRows.push(...keep(batch))
+      onProgress?.({ loaded: allRows.length, scanned, apiTotal })
     }
   }
 
