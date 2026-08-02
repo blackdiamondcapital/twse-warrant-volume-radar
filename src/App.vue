@@ -936,7 +936,7 @@ onUnmounted(() => {
         <label>搜尋標的／股票代號／權證代號／名稱</label>
         <input
           v-model="filters.q"
-          placeholder="例如：2330、台積電、03002T、群益"
+          placeholder="標的 4 碼：2330、5274｜權證：703349、03002T｜名稱：金像電"
           @keyup.enter="onSearch"
         />
         <div class="type-toggle">

@@ -19,17 +19,24 @@ export function isCodeLikeMasterQuery(q) {
   return !!code && /^[A-Z0-9]+$/i.test(code) && /\d/.test(code)
 }
 
-/** 4 位數字 → 現股標的代號（如 5274 信驊），只比標的、不比權證代號子字串 */
+/** 4 位數字 → 現股標的代號（如 5274 信驊、2368 金像電） */
 export function isUnderlyingStockCodeQuery(q) {
   const code = normalizeStockCodeQuery(q).replace(/\./g, '')
   return /^\d{4}$/.test(code)
 }
 
+/** 權證代號：5 碼以上純數字，或含英文字母（如 703349、03002T） */
+export function isWarrantCodeQuery(q) {
+  const code = normalizeStockCodeQuery(q).replace(/\./g, '')
+  if (!/^[A-Z0-9]+$/i.test(code)) return false
+  return code.length >= 5 || /[A-Z]/i.test(code)
+}
+
 /**
  * 代號查詢：
- * - 4 位數字：標的代號精確（5274 → 信驊，排除 055274 等誤中）
- * - 權證代號：精確或前綴（03002 → 03002T…）
- * 名稱查詢：交由後端模糊比對，前端不另篩。
+ * - 4 位數字 → 標的代號（5274 信驊；排除 055274 子字串誤中）
+ * - 5 碼以上／含英文 → 權證代號精確或前綴（703349、03002T、03002…）
+ * - 名稱（中文）→ 後端模糊比對
  */
 export function rowMatchesMasterQuery(row, q) {
   const raw = String(q || '').trim()
@@ -42,6 +49,10 @@ export function rowMatchesMasterQuery(row, q) {
 
   if (isUnderlyingStockCodeQuery(raw)) {
     return underlying === code
+  }
+
+  if (isWarrantCodeQuery(raw)) {
+    return warrant === code || warrant.startsWith(code)
   }
 
   return warrant === code || warrant.startsWith(code) || underlying === code
