@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx'
 import { fetchMasterDetail } from '../api'
 import { normalizeWarrantExpiryFields, resolveExpiryDate } from './warrantDisplay.js'
 import { rowToDetailSheetRow } from './exportMasterExcel.js'
-import { downloadExcelFile } from './downloadExcel.js'
+import { downloadExcelFile, pickExcelSaveLocation } from './downloadExcel.js'
 import { enrichMasterRowsWithGrades } from './taScreenFilter.js'
 
 const MASTER_ENRICH_CONCURRENCY = 14
@@ -84,10 +84,14 @@ function rowToHeatDetailSheetRow(row) {
   }
 }
 
-export async function exportHeatToExcel(rows, { tradeDate, onProgress } = {}) {
+export async function exportHeatToExcel(rows, { tradeDate, onProgress, saveTarget: presetSaveTarget = null } = {}) {
   if (!rows?.length) {
     throw new Error('沒有熱度排行可匯出')
   }
+
+  const datePart = tradeDate ? String(tradeDate).replace(/-/g, '') : todayStamp()
+  const filename = `當日熱度_詳細_${datePart}.xlsx`
+  const saveTarget = presetSaveTarget || await pickExcelSaveLocation(filename)
 
   onProgress?.({ phase: 'master', done: 0, total: rows.length })
   const withMaster = await enrichHeatRowsFromMaster(rows, {
@@ -102,7 +106,6 @@ export async function exportHeatToExcel(rows, { tradeDate, onProgress } = {}) {
   const sheet = XLSX.utils.json_to_sheet(enriched.map(rowToHeatDetailSheetRow))
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, sheet, '當日熱度')
-  const datePart = tradeDate ? String(tradeDate).replace(/-/g, '') : todayStamp()
-  const method = await downloadExcelFile(workbook, `當日熱度_詳細_${datePart}.xlsx`)
+  const method = await downloadExcelFile(workbook, filename, saveTarget)
   return { count: enriched.length, method }
 }

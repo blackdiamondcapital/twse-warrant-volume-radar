@@ -10,7 +10,7 @@ import {
 } from './warrantDisplay.js'
 import { buildMasterSearchParams } from './masterSearchParams.js'
 import { rowMatchesMasterQuery } from './masterSearchMatch.js'
-import { downloadExcelFile } from './downloadExcel.js'
+import { downloadExcelFile, pickExcelSaveLocation } from './downloadExcel.js'
 import { enrichMasterRowsWithGrades } from './taScreenFilter.js'
 
 function pad2(n) {
@@ -83,6 +83,8 @@ export async function exportRowsToExcel(rows, {
   filenamePrefix = '權證主檔',
   sheetName = '發行主檔',
   compact = false,
+  saveTarget = null,
+  filename = null,
 } = {}) {
   if (!rows?.length) {
     throw new Error('沒有符合條件的主檔可匯出')
@@ -92,7 +94,8 @@ export async function exportRowsToExcel(rows, {
   const sheet = XLSX.utils.json_to_sheet(sorted.map(mapper))
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, sheet, sheetName)
-  const method = await downloadExcelFile(workbook, `${filenamePrefix}_${todayStamp()}.xlsx`)
+  const outName = filename || `${filenamePrefix}_${todayStamp()}.xlsx`
+  const method = await downloadExcelFile(workbook, outName, saveTarget)
   return { count: sorted.length, method }
 }
 
@@ -203,7 +206,12 @@ export async function exportMasterToExcel(filters, numOrUndef, {
   compact = true,
   individualStockOnly = true,
   unexpiredOnly = true,
+  saveTarget: presetSaveTarget = null,
 } = {}) {
+  const filenamePrefix = compact ? '個股權證代號_未到期' : '權證主檔_未到期'
+  const filename = `${filenamePrefix}_${todayStamp()}.xlsx`
+  const saveTarget = presetSaveTarget || await pickExcelSaveLocation(filename)
+
   const rowFilter = buildExportRowFilter({
     individualStockOnly,
     unexpiredOnly,
@@ -230,8 +238,10 @@ export async function exportMasterToExcel(filters, numOrUndef, {
   }
 
   return exportRowsToExcel(rows, {
-    filenamePrefix: compact ? '個股權證代號_未到期' : '權證主檔_未到期',
+    filenamePrefix,
     sheetName: compact ? '個股權證代號' : '發行主檔',
     compact,
+    saveTarget,
+    filename,
   })
 }

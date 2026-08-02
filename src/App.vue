@@ -385,6 +385,7 @@ const masterSearchSummary = computed(() => {
 })
 
 const resultsMetaLabel = computed(() => {
+  if (exportingMaster.value) return statusText.value || '匯出 Excel 中…'
   if (loadingMaster.value) return '載入中…'
   if (masterTotal.value > 0) return `符合 ${masterTotal.value.toLocaleString()} 檔 · ${masterSearchSummary.value}`
   if (statusText.value) return statusText.value
@@ -721,7 +722,7 @@ async function setMasterTypeAndSearch(type) {
 
 async function onExportMaster() {
   exportingMaster.value = true
-  statusText.value = '正在準備 Excel…'
+  statusText.value = '請選擇儲存位置（預設桌面）…'
   try {
     let presetRows = null
     if (clientFilterActive.value && taFilteredRows.value.length) {
@@ -737,7 +738,7 @@ async function onExportMaster() {
       unexpiredOnly: true,
       onProgress: ({ phase, loaded, total }) => {
         if (phase === 'load') {
-          statusText.value = `匯出中…已載入 ${loaded.toLocaleString()} 檔未到期個股權證${total ? `（主檔約 ${total.toLocaleString()} 檔）` : ''}`
+          statusText.value = `已選位置，載入主檔… ${loaded.toLocaleString()}${total ? ` / ${total.toLocaleString()}` : ''} 檔`
         }
       },
     })
@@ -766,7 +767,7 @@ function toggleHeatSection() {
 
 async function onExportHeat() {
   exportingHeat.value = true
-  statusText.value = '正在準備 Excel…'
+  statusText.value = '請選擇儲存位置（預設桌面）…'
   try {
     const { count, method } = await exportHeatToExcel(rankings.value, {
       tradeDate: selectedDate.value,
@@ -1052,6 +1053,8 @@ onUnmounted(() => {
         >清除技術面</button>
       </div>
     </section>
+
+    <p v-if="statusText && !showMasterResults" class="status muted">{{ statusText }}</p>
 
     <div class="workspace">
       <MasterScreener
