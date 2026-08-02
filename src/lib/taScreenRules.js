@@ -3,10 +3,6 @@ import { calcSMA, calcDuoKongLine, mapBars } from './indicators'
 /** 選股「剛站上多空線」專用週期（與圖表預設 77 可不同） */
 export const TA_SCREEN_DUO_KONG_PERIOD = 45
 
-/** 收盤價接近區間高低：容許誤差占振幅比例 */
-export const TA_CLOSE_RANGE_TOLERANCE = 0.015
-export const TA_CLOSE_RANGE_DAYS = 120
-
 /** 對齊主站 StockChartECharts 動態轉折（小不點）預設參數 */
 export const DEFAULT_GOLDEN_WAVE_PARAMS = {
   fastMa: 30,
@@ -163,51 +159,6 @@ export function isDuoKongCrossUp(closes, period = TA_SCREEN_DUO_KONG_PERIOD) {
   return closeNow > dkNow && closePrev <= dkPrev
 }
 
-function calcClosePriceRange(closes) {
-  const valid = closes.filter((c) => c != null && Number.isFinite(Number(c)))
-  if (valid.length < 2) return null
-  let high = -Infinity
-  let low = Infinity
-  for (const c of valid) {
-    const v = Number(c)
-    if (v > high) high = v
-    if (v < low) low = v
-  }
-  if (!Number.isFinite(high) || !Number.isFinite(low) || high <= low) return null
-  return { high, low, range: high - low }
-}
-
-/** 最新收盤價接近日線收盤價區間最高（僅收盤價） */
-export function isCloseNearRangeHigh(closes, toleranceRatio = TA_CLOSE_RANGE_TOLERANCE) {
-  const span = calcClosePriceRange(closes)
-  if (!span) return false
-  const last = closes[closes.length - 1]
-  if (last == null || !Number.isFinite(Number(last))) return false
-  const close = Number(last)
-  const tol = Math.max(span.range * toleranceRatio, span.high * 0.005)
-  return Math.abs(close - span.high) <= tol
-}
-
-/** 最新收盤價接近日線收盤價區間最低（僅收盤價） */
-export function isCloseNearRangeLow(closes, toleranceRatio = TA_CLOSE_RANGE_TOLERANCE) {
-  const span = calcClosePriceRange(closes)
-  if (!span) return false
-  const last = closes[closes.length - 1]
-  if (last == null || !Number.isFinite(Number(last))) return false
-  const close = Number(last)
-  const tol = Math.max(span.range * toleranceRatio, span.high * 0.005)
-  return Math.abs(close - span.low) <= tol
-}
-
-export function passesCloseRangeTaFilters(signals, taFilters) {
-  const wantHigh = !!taFilters?.closeNearHigh
-  const wantLow = !!taFilters?.closeNearLow
-  if (!wantHigh && !wantLow) return true
-  if (wantHigh && wantLow) return !!(signals.closeNearHigh || signals.closeNearLow)
-  if (wantHigh) return !!signals.closeNearHigh
-  return !!signals.closeNearLow
-}
-
 export function evaluateTaSignals(bars) {
   const mapped = mapBars(bars).filter((b) => b.close != null)
   const ohlcBars = mapped.filter(
@@ -219,8 +170,6 @@ export function evaluateTaSignals(bars) {
     reversalFirstRed: isGoldenWaveFirstRed(closes, gwParams),
     heikinFirstRed: isHeikinFirstRed(ohlcBars),
     ma5gtMa10: isMa5AboveMa10(closes),
-    closeNearHigh: isCloseNearRangeHigh(closes),
-    closeNearLow: isCloseNearRangeLow(closes),
     duoKongCrossUp: isDuoKongCrossUp(closes),
   }
 }
@@ -230,12 +179,11 @@ export function passesTaFilters(signals, taFilters) {
   if (taFilters.reversalFirstRed && !signals.reversalFirstRed) return false
   if (taFilters.heikinFirstRed && !signals.heikinFirstRed) return false
   if (taFilters.ma5gtMa10 && !signals.ma5gtMa10) return false
-  if (!passesCloseRangeTaFilters(signals, taFilters)) return false
   if (taFilters.duoKongCrossUp && !signals.duoKongCrossUp) return false
   return true
 }
 
-export const CLIENT_ONLY_TA_FILTER_KEYS = ['closeNearHigh', 'closeNearLow', 'duoKongCrossUp']
+export const CLIENT_ONLY_TA_FILTER_KEYS = ['duoKongCrossUp']
 export const BACKEND_TA_FILTER_KEYS = ['ma5gtMa10', 'heikinFirstRed']
 
 export function hasBackendTaFilters(taFilters) {
@@ -259,8 +207,6 @@ export function hasActiveTaFilters(taFilters) {
     taFilters?.reversalFirstRed
     || taFilters?.heikinFirstRed
     || taFilters?.ma5gtMa10
-    || taFilters?.closeNearHigh
-    || taFilters?.closeNearLow
     || taFilters?.duoKongCrossUp
   )
 }

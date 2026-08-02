@@ -190,8 +190,6 @@ async function enrichCodeQueryGrades(rows) {
 const taFilters = reactive({
   heikinFirstRed: false,
   ma5gtMa10: false,
-  closeNearHigh: false,
-  closeNearLow: false,
   duoKongCrossUp: false,
 })
 
@@ -382,8 +380,6 @@ const masterSearchSummary = computed(() => {
   const ta = []
   if (taFilters.heikinFirstRed) ta.push('神奇K線第一根紅')
   if (taFilters.ma5gtMa10) ta.push('5均>10均')
-  if (taFilters.closeNearHigh) ta.push('收盤近最高')
-  if (taFilters.closeNearLow) ta.push('收盤近最低')
   if (taFilters.duoKongCrossUp) ta.push('剛站上多空線')
   if (ta.length) parts.push(ta.join('＋'))
   if (ta.length) parts.unshift('日線')
@@ -841,8 +837,6 @@ function toggleTaFilter(key) {
 function clearTaFilters() {
   taFilters.heikinFirstRed = false
   taFilters.ma5gtMa10 = false
-  taFilters.closeNearHigh = false
-  taFilters.closeNearLow = false
   taFilters.duoKongCrossUp = false
   filters.page = 1
   if (showMasterResults.value) loadMaster()
@@ -1054,7 +1048,7 @@ onUnmounted(() => {
           <span class="ta-period-badge">日線</span>
           <h3>技術分析</h3>
         </div>
-        <p class="ta-hint muted">未填標的時掃成交量前 600 檔。收盤近最高／最低：<strong>只用收盤價</strong>比對約 120 日區間（兩者都勾＝符合任一）。</p>
+        <p class="ta-hint muted">未填標的時掃成交量前 600 檔。剛站上多空線：Hull 週期 45；神奇K／5均&gt;10均由後端篩選。</p>
         <div class="ta-chip-row">
           <button
             type="button"
@@ -1063,20 +1057,6 @@ onUnmounted(() => {
             title="最新收盤站上多空線（週期 45），且前一日收在線下或貼線"
             @click="toggleTaFilter('duoKongCrossUp')"
           >剛站上多空線</button>
-          <button
-            type="button"
-            class="chip-btn"
-            :class="{ active: taFilters.closeNearHigh }"
-            title="最新收盤價接近約 120 日最高收盤價"
-            @click="toggleTaFilter('closeNearHigh')"
-          >收盤近最高</button>
-          <button
-            type="button"
-            class="chip-btn"
-            :class="{ active: taFilters.closeNearLow }"
-            title="最新收盤價接近約 120 日最低收盤價"
-            @click="toggleTaFilter('closeNearLow')"
-          >收盤近最低</button>
           <button
             type="button"
             class="chip-btn"

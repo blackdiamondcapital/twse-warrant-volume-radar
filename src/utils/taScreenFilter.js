@@ -1,5 +1,5 @@
 import { fetchTimeseries } from '../api'
-import { evaluateTaSignals, hasActiveTaFilters, passesTaFilters, TA_CLOSE_RANGE_DAYS } from '../lib/taScreenRules'
+import { evaluateTaSignals, hasActiveTaFilters, passesTaFilters } from '../lib/taScreenRules'
 import { gradeWarrant, buildGradeDetail } from '../lib/warrantGrade.js'
 
 const TIMESERIES_LIMIT_DAYS = 90
@@ -83,9 +83,7 @@ export async function filterMasterRowsClient(
   if ((!needTa && !needGrade && !gradeOnly) || !rows?.length) return rows
 
   let barLimit = timeseriesLimitDays ?? TIMESERIES_LIMIT_DAYS
-  if (taFilters?.closeNearHigh || taFilters?.closeNearLow) {
-    barLimit = timeseriesLimitDays ?? TA_CLOSE_RANGE_DAYS
-  } else if (taFilters?.duoKongCrossUp) {
+  if (taFilters?.duoKongCrossUp) {
     barLimit = timeseriesLimitDays ?? DUO_KONG_TIMESERIES_LIMIT_DAYS
   }
 
