@@ -679,10 +679,10 @@ function openTechChartOrLogin() {
 async function onSearch() {
   filters.page = 1
   masterScreenerOpen.value = true
-  await loadMaster()
   showMasterResults.value = true
   await nextTick()
   window.scrollTo({ top: 0, behavior: 'smooth' })
+  await loadMaster()
 }
 
 function backToSearch() {
@@ -1146,6 +1146,21 @@ onUnmounted(() => {
           <div class="results-copy">
             <h1 class="results-title">權證搜尋結果</h1>
             <p class="results-summary muted">{{ masterSearchSummary }}</p>
+          </div>
+        </div>
+
+        <div class="results-search panel">
+          <label class="results-search-label">關鍵字</label>
+          <div class="results-search-row">
+            <input
+              v-model="filters.q"
+              class="results-search-input"
+              placeholder="標的 4 碼：2330、5274｜權證：703349、03002T｜名稱：金像電"
+              @keyup.enter="onSearch"
+            />
+            <button type="button" class="primary results-search-btn" :disabled="loadingMaster" @click="onSearch">
+              {{ loadingMaster ? '搜尋中…' : '再搜尋' }}
+            </button>
           </div>
         </div>
 
@@ -2063,6 +2078,35 @@ a.btn-auth {
   align-items: center;
   gap: 0.75rem 1rem;
   padding: 0.85rem 1rem;
+}
+.results-search {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem 1rem;
+}
+.results-search-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.results-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+.results-search-input {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: 0.48rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 212, 255, 0.22);
+  background: rgba(7, 11, 20, 0.55);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.results-search-btn {
+  flex-shrink: 0;
+  min-width: 5.5rem;
 }
 .back-btn {
   flex-shrink: 0;
