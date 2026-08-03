@@ -150,6 +150,8 @@ function sortDirLabel() {
   return filters.sortDir === 'asc' ? '升冪 ↑' : '降冪 ↓'
 }
 
+const enrichingGrades = ref(false)
+
 async function enrichScopedSearchResults(scoped) {
   if (!scoped || masterTotal.value <= 0) return false
 
@@ -159,32 +161,42 @@ async function enrichScopedSearchResults(scoped) {
     ? [...masterRows.value]
     : await fetchMasterRowsUpTo(filters, numOrUndef, cap)
 
+  enrichingGrades.value = true
   statusText.value = `評等計算中… 0 / ${rowsForGrade.length}`
-  const graded = applyMasterSort(await enrichMasterRowsWithGrades(rowsForGrade, {
-    onProgress: ({ done, total }) => {
-      statusText.value = `評等計算 ${done} / ${total}…`
-    },
-  }))
-  taFilteredRows.value = graded
-  masterTotal.value = graded.length
-  clientFilterActive.value = true
-  paginateClientFilteredRows(Math.max(1, filters.page))
-  statusText.value = clientFilterStatusLabel(masterTotal.value, filters.page)
-  return true
+  try {
+    const graded = applyMasterSort(await enrichMasterRowsWithGrades(rowsForGrade, {
+      onProgress: ({ done, total }) => {
+        statusText.value = `評等計算 ${done} / ${total}…`
+      },
+    }))
+    taFilteredRows.value = graded
+    masterTotal.value = graded.length
+    clientFilterActive.value = true
+    paginateClientFilteredRows(Math.max(1, filters.page))
+    statusText.value = clientFilterStatusLabel(masterTotal.value, filters.page)
+    return true
+  } finally {
+    enrichingGrades.value = false
+  }
 }
 
 async function enrichCodeQueryGrades(rows) {
   if (!rows?.length) return
+  enrichingGrades.value = true
   statusText.value = `評等計算中… 0 / ${rows.length}`
-  const graded = applyMasterSort(await enrichMasterRowsWithGrades(rows, {
-    onProgress: ({ done, total }) => {
-      statusText.value = `評等計算 ${done} / ${total}…`
-    },
-  }))
-  taFilteredRows.value = graded
-  masterTotal.value = graded.length
-  paginateClientFilteredRows(Math.max(1, filters.page))
-  statusText.value = `代號「${String(filters.q).trim()}」精確符合 ${graded.length.toLocaleString()} 檔 · 第 ${filters.page} 頁`
+  try {
+    const graded = applyMasterSort(await enrichMasterRowsWithGrades(rows, {
+      onProgress: ({ done, total }) => {
+        statusText.value = `評等計算 ${done} / ${total}…`
+      },
+    }))
+    taFilteredRows.value = graded
+    masterTotal.value = graded.length
+    paginateClientFilteredRows(Math.max(1, filters.page))
+    statusText.value = `代號「${String(filters.q).trim()}」精確符合 ${graded.length.toLocaleString()} 檔 · 第 ${filters.page} 頁`
+  } finally {
+    enrichingGrades.value = false
+  }
 }
 
 const taFilters = reactive({
@@ -389,6 +401,10 @@ const masterSearchSummary = computed(() => {
 const resultsMetaLabel = computed(() => {
   if (exportingMaster.value) return statusText.value || '匯出 Excel 中…'
   if (loadingMaster.value) return '載入中…'
+  // 評等仍在背景計算時，勿被「符合 N 檔」蓋掉進度（否則看起來像永久沒評等）
+  if (enrichingGrades.value || String(statusText.value || '').includes('評等計算')) {
+    return statusText.value || '評等計算中…'
+  }
   if (masterTotal.value > 0) return `符合 ${masterTotal.value.toLocaleString()} 檔 · ${masterSearchSummary.value}`
   if (statusText.value) return statusText.value
   return masterSearchSummary.value
@@ -450,11 +466,9 @@ async function loadMaster() {
       statusText.value = rows.length
         ? `標的／代號「${qLabel}」符合 ${rows.length.toLocaleString()} 檔 · 第 ${filters.page} 頁`
         : `標的／代號「${qLabel}」沒有符合的未到期權證（可先按「清除基本面條件」再搜）`
-      // 代號／標的搜尋：不論檔數都計算評等（進度顯示於狀態列）
+      // 代號／標的搜尋：等待評等算完再結束（loading 期間會顯示進度）
       if (rows.length > 0) {
-        void enrichCodeQueryGrades(rows).catch((err) => {
-          console.error(err)
-        })
+        await enrichCodeQueryGrades(rows)
       }
       return
     }
