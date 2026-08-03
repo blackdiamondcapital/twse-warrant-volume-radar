@@ -450,7 +450,8 @@ async function loadMaster() {
       statusText.value = rows.length
         ? `標的／代號「${qLabel}」符合 ${rows.length.toLocaleString()} 檔 · 第 ${filters.page} 頁`
         : `標的／代號「${qLabel}」沒有符合的未到期權證（可先按「清除基本面條件」再搜）`
-      if (rows.length > 0 && rows.length <= 200) {
+      // 代號／標的搜尋：不論檔數都計算評等（進度顯示於狀態列）
+      if (rows.length > 0) {
         void enrichCodeQueryGrades(rows).catch((err) => {
           console.error(err)
         })

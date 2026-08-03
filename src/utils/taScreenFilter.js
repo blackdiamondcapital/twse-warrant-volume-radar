@@ -111,7 +111,13 @@ export async function filterMasterRowsClient(
       try {
         const bars = await fetchBarsForCode(code, barLimit)
         if (!bars.length) {
-          if (gradeOnly) pushMatch({ ...row })
+          if (gradeOnly) {
+            const enriched = { ...row, bar_count: 0 }
+            const signals = {}
+            enriched.warrant_grade = gradeWarrant(enriched, { taSignals: signals })
+            enriched.grade_detail = buildGradeDetail(enriched, { taSignals: signals })
+            pushMatch(enriched)
+          }
           done += 1
           onProgress?.({ done, total: list.length, matched: matched.length })
           continue
@@ -135,7 +141,13 @@ export async function filterMasterRowsClient(
         }
         pushMatch(enriched)
       } catch {
-        if (gradeOnly) pushMatch({ ...row })
+        if (gradeOnly) {
+          const enriched = { ...row, bar_count: 0 }
+          const signals = {}
+          enriched.warrant_grade = gradeWarrant(enriched, { taSignals: signals })
+          enriched.grade_detail = buildGradeDetail(enriched, { taSignals: signals })
+          pushMatch(enriched)
+        }
       }
       done += 1
       onProgress?.({ done, total: list.length, matched: matched.length })
