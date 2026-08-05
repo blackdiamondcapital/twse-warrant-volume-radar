@@ -2,7 +2,7 @@ name: Import latest warrants daily
 
 on:
   schedule:
-    - cron: '0 16 * * *'  # UTC 16:00 = 台灣每日 00:00
+    - cron: '0 11 * * *'  # UTC 11:00 = 台灣每日 19:00
   workflow_dispatch:
 
 concurrency:
