@@ -11,7 +11,6 @@ import {
 import { buildMasterSearchParams } from './masterSearchParams.js'
 import { rowMatchesMasterQuery } from './masterSearchMatch.js'
 import { downloadExcelFile, pickExcelSaveLocation } from './downloadExcel.js'
-import { enrichMasterRowsWithGrades } from './taScreenFilter.js'
 
 function pad2(n) {
   return String(n).padStart(2, '0')
@@ -41,7 +40,6 @@ export function rowToDetailSheetRow(row) {
     標的代號: normalized.underlying_code ?? '',
     標的名稱: normalized.underlying_name ?? '',
     市場: normalized.market ?? '',
-    評等: normalized.warrant_grade ?? '',
     收盤: normalized.close_price ?? '',
     成交量: normalized.volume ?? '',
     履約價: normalized.latest_exercise_price ?? '',
@@ -181,14 +179,6 @@ export async function fetchMasterRowsUpTo(filters, numOrUndef, maxRows = 200) {
   return allRows.slice(0, cap)
 }
 
-async function ensureRowsWithGrades(rows, onProgress) {
-  if (!rows?.length || rows.every((row) => row.warrant_grade)) return rows
-  onProgress?.({ phase: 'grade', done: 0, total: rows.length })
-  return enrichMasterRowsWithGrades(rows, {
-    onProgress: ({ done, total }) => onProgress?.({ phase: 'grade', done, total }),
-  })
-}
-
 function buildExportRowFilter({ individualStockOnly, unexpiredOnly, q }) {
   return (row) => {
     if (individualStockOnly && !isIndividualStockWarrant(row)) return false
@@ -206,7 +196,6 @@ function applyExportRowFilters(rows, { individualStockOnly, unexpiredOnly, q }) 
 export async function exportMasterToExcel(filters, numOrUndef, {
   onProgress,
   rows: presetRows,
-  includeGrade = false,
   compact = true,
   individualStockOnly = true,
   unexpiredOnly = true,
@@ -242,10 +231,6 @@ export async function exportMasterToExcel(filters, numOrUndef, {
     throw new Error(individualStockOnly
       ? '沒有符合條件的未到期個股權證可匯出'
       : '沒有符合條件的未到期權證可匯出')
-  }
-
-  if (includeGrade) {
-    rows = await ensureRowsWithGrades(rows, onProgress)
   }
 
   return exportRowsToExcel(rows, {

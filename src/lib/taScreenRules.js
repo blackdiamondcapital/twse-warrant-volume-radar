@@ -84,7 +84,7 @@ function goldenWaveBarRedAt(gw, i) {
   return isGoldenWaveBarRed(gw.dif[i], gw.difSub[i], subPrev3)
 }
 
-/** 小不點：最新一根為紅柱，且前一根非紅柱（評等仍使用，選股已移除） */
+/** 小不點：最新一根為紅柱，且前一根非紅柱 */
 export function isGoldenWaveFirstRed(closes, params = DEFAULT_GOLDEN_WAVE_PARAMS) {
   if (!closes?.length) return false
   const gw = calcGoldenWave(closes, params)

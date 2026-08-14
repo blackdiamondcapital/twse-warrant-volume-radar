@@ -1,6 +1,5 @@
 import { fetchTimeseries } from '../api'
 import { evaluateTaSignals, hasActiveTaFilters, passesTaFilters } from '../lib/taScreenRules'
-import { gradeWarrant, buildGradeDetail } from '../lib/warrantGrade.js'
 
 const TIMESERIES_LIMIT_DAYS = 90
 const DUO_KONG_TIMESERIES_LIMIT_DAYS = 60
@@ -42,35 +41,11 @@ export function clearMasterBarCache() {
   barInflight.clear()
 }
 
-export function needsClientSideMasterFilter(taFilters, gradeFilter = '', { scopedSearch = false } = {}) {
-  // 技術面可掃全市場；評等仍僅在有搜尋範圍時於前端計算
-  if (hasActiveTaFilters(taFilters)) return true
-  if (!scopedSearch) return false
-  if (gradeFilter) return true
-  return false
-}
-
-/** 搜尋結果逐檔計算 A/B/C（不篩掉列） */
-export async function enrichMasterRowsWithGrades(
-  rows,
-  { onProgress, concurrency = DEFAULT_CONCURRENCY } = {},
-) {
-  return filterMasterRowsClient(rows, {
-    taFilters: {},
-    gradeFilter: '',
-    gradeOnly: true,
-    onProgress,
-    concurrency,
-  })
-}
-
-/** 逐檔抓日線，套用技術分析／評等條件並計算評等 */
+/** 逐檔抓日線，套用技術分析條件 */
 export async function filterMasterRowsClient(
   rows,
   {
     taFilters,
-    gradeFilter = '',
-    gradeOnly = false,
     onProgress,
     onMatch,
     concurrency = DEFAULT_CONCURRENCY,
@@ -78,9 +53,7 @@ export async function filterMasterRowsClient(
   } = {},
 ) {
   const needTa = hasActiveTaFilters(taFilters)
-  const needGrade = !!gradeFilter
-  const enrichGrade = needGrade || gradeOnly
-  if ((!needTa && !needGrade && !gradeOnly) || !rows?.length) return rows
+  if (!needTa || !rows?.length) return rows
 
   let barLimit = timeseriesLimitDays ?? TIMESERIES_LIMIT_DAYS
   if (taFilters?.duoKongCrossUp) {
@@ -111,43 +84,19 @@ export async function filterMasterRowsClient(
       try {
         const bars = await fetchBarsForCode(code, barLimit)
         if (!bars.length) {
-          if (gradeOnly) {
-            const enriched = { ...row, bar_count: 0 }
-            const signals = {}
-            enriched.warrant_grade = gradeWarrant(enriched, { taSignals: signals })
-            enriched.grade_detail = buildGradeDetail(enriched, { taSignals: signals })
-            pushMatch(enriched)
-          }
           done += 1
           onProgress?.({ done, total: list.length, matched: matched.length })
           continue
         }
         const signals = evaluateTaSignals(bars)
-        if (needTa && !passesTaFilters(signals, taFilters)) {
+        if (!passesTaFilters(signals, taFilters)) {
           done += 1
           onProgress?.({ done, total: list.length, matched: matched.length })
           continue
         }
-        const enriched = { ...row, bar_count: bars.length }
-        if (enrichGrade) {
-          const grade = gradeWarrant(enriched, { taSignals: signals })
-          enriched.warrant_grade = grade
-          enriched.grade_detail = buildGradeDetail(enriched, { taSignals: signals })
-          if (needGrade && grade !== gradeFilter) {
-            done += 1
-            onProgress?.({ done, total: list.length, matched: matched.length })
-            continue
-          }
-        }
-        pushMatch(enriched)
+        pushMatch({ ...row, bar_count: bars.length })
       } catch {
-        if (gradeOnly) {
-          const enriched = { ...row, bar_count: 0 }
-          const signals = {}
-          enriched.warrant_grade = gradeWarrant(enriched, { taSignals: signals })
-          enriched.grade_detail = buildGradeDetail(enriched, { taSignals: signals })
-          pushMatch(enriched)
-        }
+        /* skip unmatched on fetch error */
       }
       done += 1
       onProgress?.({ done, total: list.length, matched: matched.length })

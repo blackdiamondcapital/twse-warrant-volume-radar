@@ -21,7 +21,7 @@ import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { buildMasterSearchParams } from './utils/masterSearchParams.js'
 import { filterMasterRowsByQuery, isCodeLikeMasterQuery, buildStockCodeLookupFilters } from './utils/masterSearchMatch.js'
-import { filterMasterRowsClient, enrichMasterRowsWithGrades, needsClientSideMasterFilter, TA_FULL_MARKET_SCAN_CAP, TA_SCOPED_SCAN_CAP, TA_BACKEND_CLIENT_CAP } from './utils/taScreenFilter.js'
+import { filterMasterRowsClient, TA_FULL_MARKET_SCAN_CAP, TA_SCOPED_SCAN_CAP, TA_BACKEND_CLIENT_CAP } from './utils/taScreenFilter.js'
 import { isUnexpiredWarrant } from './utils/warrantDisplay.js'
 import { hasActiveTaFilters, hasBackendTaFilters, hasClientOnlyTaFilters, pickClientOnlyTaFilters } from './lib/taScreenRules.js'
 import { getCarouselLimitForUser } from './utils/planAccess.js'
@@ -88,7 +88,6 @@ const filters = reactive({
 
 const MASTER_SORT_OPTIONS = [
   { key: 'expiry', label: '到期日' },
-  { key: 'grade', label: '評等' },
   { key: 'volume', label: '成交量' },
   { key: 'exercise', label: '履約價' },
   { key: 'days', label: '剩餘天數' },
@@ -105,12 +104,6 @@ function applyMasterSort(rows) {
   const dir = filters.sortDir === 'desc' ? -1 : 1
   const key = filters.sort
   return [...rows].sort((a, b) => {
-    if (key === 'grade') {
-      const order = { A: 0, B: 1, C: 2 }
-      const ga = order[a.warrant_grade] ?? 9
-      const gb = order[b.warrant_grade] ?? 9
-      return (ga - gb) * dir
-    }
     if (key === 'volume') {
       return ((sortNum(a.volume) ?? -1) - (sortNum(b.volume) ?? -1)) * dir
     }
@@ -132,7 +125,6 @@ function setMasterSort(key) {
     filters.sortDir = filters.sortDir === 'asc' ? 'desc' : 'asc'
   } else {
     filters.sort = key
-    filters.sortDir = key === 'grade' ? 'asc' : filters.sortDir
   }
   filters.page = 1
   if (clientFilterActive.value) {
@@ -150,33 +142,7 @@ function sortDirLabel() {
   return filters.sortDir === 'asc' ? '升冪 ↑' : '降冪 ↓'
 }
 
-const enrichingGrades = ref(false)
 let masterLoadRequestId = 0
-let gradeRequestId = 0
-
-async function enrichVisiblePageGrades(rows, {
-  loadRequestId,
-  statusLabel,
-} = {}) {
-  if (!rows?.length) return
-  const requestId = ++gradeRequestId
-  enrichingGrades.value = true
-  statusText.value = `當頁評等計算中… 0 / ${rows.length}`
-  try {
-    const graded = await enrichMasterRowsWithGrades(rows, {
-      onProgress: ({ done, total }) => {
-        if (requestId === gradeRequestId) {
-          statusText.value = `當頁評等計算 ${done} / ${total}…`
-        }
-      },
-    })
-    if (requestId !== gradeRequestId || loadRequestId !== masterLoadRequestId) return
-    masterRows.value = filters.sort === 'grade' ? applyMasterSort(graded) : graded
-    statusText.value = statusLabel || `符合 ${masterTotal.value.toLocaleString()} 檔 · 第 ${filters.page} 頁`
-  } finally {
-    if (requestId === gradeRequestId) enrichingGrades.value = false
-  }
-}
 
 const taFilters = reactive({
   heikinFirstRed: false,
@@ -380,19 +346,12 @@ const masterSearchSummary = computed(() => {
 const resultsMetaLabel = computed(() => {
   if (exportingMaster.value) return statusText.value || '匯出 Excel 中…'
   if (loadingMaster.value) return '載入中…'
-  // 評等仍在背景計算時，勿被「符合 N 檔」蓋掉進度（否則看起來像永久沒評等）
-  if (enrichingGrades.value || String(statusText.value || '').includes('評等計算')) {
-    return statusText.value || '評等計算中…'
-  }
   if (masterTotal.value > 0) return `符合 ${masterTotal.value.toLocaleString()} 檔 · ${masterSearchSummary.value}`
   if (statusText.value) return statusText.value
   return masterSearchSummary.value
 })
 
 const canExportMasterResults = computed(() => masterTotal.value > 0)
-const showResultGrades = computed(() =>
-  usesClientSideMasterResults() || hasSearchScope(),
-)
 
 function numOrUndef(v) {
   if (v === '' || v == null) return undefined
@@ -425,8 +384,6 @@ function hasSearchScope() {
 
 async function loadMaster() {
   const loadRequestId = ++masterLoadRequestId
-  gradeRequestId += 1
-  enrichingGrades.value = false
   loadingMaster.value = true
   try {
     const scoped = hasSearchScope()
@@ -454,15 +411,12 @@ async function loadMaster() {
         ? `標的／代號「${qLabel}」符合 ${masterTotal.value.toLocaleString()} 檔 · 第 ${filters.page} 頁`
         : `標的／代號「${qLabel}」沒有符合的未到期權證（可先按「清除基本面條件」再搜）`
       statusText.value = doneLabel
-      if (rows.length > 0) {
-        void enrichVisiblePageGrades(rows, { loadRequestId, statusLabel: doneLabel })
-      }
       return
     }
 
-    if (needsClientSideMasterFilter(taFilters, '', { scopedSearch: scoped })) {
+    if (wantClientFilter) {
       const fullMarket = wantClientFilter && !scoped
-      const sortKey = filters.sort === 'grade' ? 'volume' : (filters.sort || 'volume')
+      const sortKey = filters.sort || 'volume'
       let rows = []
       let candidates = 0
       let elapsedMs = null
@@ -532,11 +486,7 @@ async function loadMaster() {
     if (loadRequestId !== masterLoadRequestId) return
     masterRows.value = keepUnexpiredRows(data.data || [])
     masterTotal.value = data.total || 0
-    const doneLabel = `未到期主檔 ${data.total?.toLocaleString?.() || 0} 檔 · 顯示第 ${data.page} 頁`
-    statusText.value = doneLabel
-    if (scoped && !wantClientFilter && masterRows.value.length > 0) {
-      void enrichVisiblePageGrades([...masterRows.value], { loadRequestId, statusLabel: doneLabel })
-    }
+    statusText.value = `未到期主檔 ${data.total?.toLocaleString?.() || 0} 檔 · 顯示第 ${data.page} 頁`
   } catch (err) {
     if (loadRequestId !== masterLoadRequestId) return
     console.error(err)
@@ -775,7 +725,6 @@ async function onExportMaster() {
     }
     const { count, method } = await exportMasterToExcel(filters, numOrUndef, {
       rows: presetRows || undefined,
-      includeGrade: false,
       compact: true,
       individualStockOnly: !includeIndex,
       unexpiredOnly: true,
@@ -821,8 +770,6 @@ async function onExportHeat() {
       onProgress: ({ phase, done, total }) => {
         if (phase === 'master') {
           statusText.value = `熱度 Excel：補齊主檔… ${done.toLocaleString()} / ${total.toLocaleString()} 檔`
-        } else if (phase === 'grade') {
-          statusText.value = `熱度 Excel：評等計算中… ${done.toLocaleString()} / ${total.toLocaleString()} 檔`
         }
       },
     })
@@ -1116,7 +1063,6 @@ onUnmounted(() => {
         :export-include-index="masterExportIncludeIndex"
         :selected-code="selected?.warrant_code || ''"
         :open="masterScreenerOpen"
-        :show-grade="false"
         @select="selectMasterWarrant"
         @page="onPage"
         @toggle="toggleMasterScreener"
@@ -1146,7 +1092,7 @@ onUnmounted(() => {
         <button
           type="button"
           class="export-btn"
-          title="匯出目前熱度排行（最多 100 檔）含評等與完整欄位，可另存至桌面"
+          title="匯出目前熱度排行（最多 100 檔）含完整欄位，可另存至桌面"
           :disabled="exportingHeat || loadingRankings || !rankings.length"
           @click.stop="onExportHeat"
         >
@@ -1230,7 +1176,7 @@ onUnmounted(() => {
               class="results-export-btn"
               :class="{ 'results-export-btn--ready': canExportMasterResults && !exportingMaster && !loadingMaster }"
               :disabled="exportingMaster || loadingMaster || !canExportMasterResults"
-              :title="masterExportIncludeIndex ? '匯出未到期權證（含加權／台指等指數類，不含評等）' : '匯出未到期個股權證（不含評等）'"
+              :title="masterExportIncludeIndex ? '匯出未到期權證（含加權／台指等指數類）' : '匯出未到期個股權證'"
               @click="onExportMaster"
             >
               {{ exportingMaster ? '匯出中…' : 'Excel' }}
@@ -1282,7 +1228,6 @@ onUnmounted(() => {
           :export-include-index="masterExportIncludeIndex"
           :selected-code="selected?.warrant_code || ''"
           :open="true"
-          :show-grade="showResultGrades"
           @select="selectMasterWarrant"
           @page="onPage"
           @export="onExportMaster"

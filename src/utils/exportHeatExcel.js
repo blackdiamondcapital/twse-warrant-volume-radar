@@ -3,7 +3,6 @@ import { fetchMasterDetail } from '../api'
 import { normalizeWarrantExpiryFields, resolveExpiryDate } from './warrantDisplay.js'
 import { rowToDetailSheetRow } from './exportMasterExcel.js'
 import { downloadExcelFile, pickExcelSaveLocation } from './downloadExcel.js'
-import { enrichMasterRowsWithGrades } from './taScreenFilter.js'
 
 const MASTER_ENRICH_CONCURRENCY = 14
 
@@ -98,14 +97,9 @@ export async function exportHeatToExcel(rows, { tradeDate, onProgress, saveTarge
     onProgress: ({ done, total }) => onProgress?.({ phase: 'master', done, total }),
   })
 
-  onProgress?.({ phase: 'grade', done: 0, total: withMaster.length })
-  const enriched = await enrichMasterRowsWithGrades(withMaster, {
-    onProgress: ({ done, total }) => onProgress?.({ phase: 'grade', done, total }),
-  })
-
-  const sheet = XLSX.utils.json_to_sheet(enriched.map(rowToHeatDetailSheetRow))
+  const sheet = XLSX.utils.json_to_sheet(withMaster.map(rowToHeatDetailSheetRow))
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, sheet, '當日熱度')
   const method = await downloadExcelFile(workbook, filename, saveTarget)
-  return { count: enriched.length, method }
+  return { count: withMaster.length, method }
 }

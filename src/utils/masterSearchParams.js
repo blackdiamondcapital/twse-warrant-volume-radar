@@ -36,7 +36,7 @@ export function buildMasterSearchParams(filters, numOrUndef, {
     volumeMax: numOrUndef(f.volumeMax),
     daysMin: numOrUndef(f.daysMin),
     daysMax: numOrUndef(f.daysMax),
-    sort: sortKey === 'grade' ? 'expiry' : sortKey,
+    sort: sortKey,
     sortDir: sortDir ?? f.sortDir ?? 'asc',
     page,
     pageSize,
