@@ -16,20 +16,24 @@ jobs:
       - name: Call TWSEDataCenter import endpoint
         run: |
           set -e
-          URL="${{ secrets.BACKEND_IMPORT_URL }}"
+          URL="https://twse-data-center.vercel.app/api/warrants/import-latest"
           TOKEN="${{ secrets.BACKEND_IMPORT_TOKEN }}"
-          if [ -z "$URL" ]; then
-            URL="https://twse-data-center.vercel.app/api/warrants/import-latest"
+          if [ -z "$TOKEN" ]; then
+            echo "::error::BACKEND_IMPORT_TOKEN is not configured"
+            exit 1
           fi
           echo "POST $URL"
 
-          AUTH_ARGS=""
-          if [ -n "$TOKEN" ]; then
-            AUTH_ARGS="-H \"Authorization: Bearer $TOKEN\""
-          fi
-
           set +e
-          HTTP_CODE=$(eval "curl -X POST -sS --max-time 120 $AUTH_ARGS -o trigger.json -w \"%{http_code}\" $URL")
+          HTTP_CODE=$(curl -X POST -sS \
+            --max-time 300 \
+            --retry 2 \
+            --retry-all-errors \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -o trigger.json \
+            -w "%{http_code}" \
+            "$URL")
           CURL_EXIT=$?
           set -e
 
@@ -45,13 +49,29 @@ jobs:
           TRIGGER_BODY=$(cat trigger.json || true)
           echo "$TRIGGER_BODY"
           echo "Trigger HTTP: $HTTP_CODE"
+          IMPORT_SUCCESS=$(jq -r '.success // false' trigger.json 2>/dev/null || echo false)
+          TRADE_DATE=$(jq -r '.tradeDate // empty' trigger.json 2>/dev/null || true)
 
           {
             echo "## Import latest warrants"
             echo "- **HTTP**: $HTTP_CODE"
+            echo "- **Success**: $IMPORT_SUCCESS"
+            echo "- **TWSE trade date**: ${TRADE_DATE:-unknown}"
             echo "- **Body**: $TRIGGER_BODY"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "202" ] && [ "$HTTP_CODE" != "409" ]; then
+          # 僅有「完整匯入完成」才視為成功；202 只代表背景工作被接受，
+          # 過去會讓 Action 顯示綠燈，但資料實際沒有寫入。
+          if [ "$HTTP_CODE" != "200" ] || [ "$IMPORT_SUCCESS" != "true" ] || [ -z "$TRADE_DATE" ]; then
+            echo "::error::Warrant import did not complete successfully"
             exit 1
           fi
+
+          STATS_URL="https://twse-data-center.vercel.app/api/warrants/portal/stats"
+          curl -sS --max-time 60 "$STATS_URL" -o stats.json
+          DB_TRADE_DATE=$(jq -r '.twse.latest_trade_date // empty' stats.json)
+          if [ "$DB_TRADE_DATE" != "$TRADE_DATE" ]; then
+            echo "::error::Database latest date ($DB_TRADE_DATE) does not match import date ($TRADE_DATE)"
+            exit 1
+          fi
+          echo "- **Database verified**: $DB_TRADE_DATE" >> "$GITHUB_STEP_SUMMARY"
