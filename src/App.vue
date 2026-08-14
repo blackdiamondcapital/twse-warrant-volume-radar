@@ -16,7 +16,7 @@ import MasterScreener from './components/MasterScreener.vue'
 import RankingPanel from './components/RankingPanel.vue'
 import StockChartECharts from './components/StockChartECharts.vue'
 import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
-import { exportMasterToExcel, fetchMasterRowsUpTo, fetchMasterRowsForQuery } from './utils/exportMasterExcel.js'
+import { exportMasterToExcel, fetchMasterRowsUpTo } from './utils/exportMasterExcel.js'
 import { exportHeatToExcel } from './utils/exportHeatExcel.js'
 import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { buildMasterSearchParams } from './utils/masterSearchParams.js'
@@ -83,7 +83,7 @@ const filters = reactive({
   sort: 'expiry',
   sortDir: 'asc',
   page: 1,
-  pageSize: 200,
+  pageSize: 50,
 })
 
 const MASTER_SORT_OPTIONS = [
@@ -151,51 +151,30 @@ function sortDirLabel() {
 }
 
 const enrichingGrades = ref(false)
+let masterLoadRequestId = 0
+let gradeRequestId = 0
 
-async function enrichScopedSearchResults(scoped) {
-  if (!scoped || masterTotal.value <= 0) return false
-
-  const limit = Math.max(getCarouselLimitForUser(user.value, 'watchlist'), 2)
-  const cap = Math.min(masterTotal.value, limit)
-  let rowsForGrade = masterTotal.value <= filters.pageSize
-    ? [...masterRows.value]
-    : await fetchMasterRowsUpTo(filters, numOrUndef, cap)
-
-  enrichingGrades.value = true
-  statusText.value = `評等計算中… 0 / ${rowsForGrade.length}`
-  try {
-    const graded = applyMasterSort(await enrichMasterRowsWithGrades(rowsForGrade, {
-      onProgress: ({ done, total }) => {
-        statusText.value = `評等計算 ${done} / ${total}…`
-      },
-    }))
-    taFilteredRows.value = graded
-    masterTotal.value = graded.length
-    clientFilterActive.value = true
-    paginateClientFilteredRows(Math.max(1, filters.page))
-    statusText.value = clientFilterStatusLabel(masterTotal.value, filters.page)
-    return true
-  } finally {
-    enrichingGrades.value = false
-  }
-}
-
-async function enrichCodeQueryGrades(rows) {
+async function enrichVisiblePageGrades(rows, {
+  loadRequestId,
+  statusLabel,
+} = {}) {
   if (!rows?.length) return
+  const requestId = ++gradeRequestId
   enrichingGrades.value = true
-  statusText.value = `評等計算中… 0 / ${rows.length}`
+  statusText.value = `當頁評等計算中… 0 / ${rows.length}`
   try {
-    const graded = applyMasterSort(await enrichMasterRowsWithGrades(rows, {
+    const graded = await enrichMasterRowsWithGrades(rows, {
       onProgress: ({ done, total }) => {
-        statusText.value = `評等計算 ${done} / ${total}…`
+        if (requestId === gradeRequestId) {
+          statusText.value = `當頁評等計算 ${done} / ${total}…`
+        }
       },
-    }))
-    taFilteredRows.value = graded
-    masterTotal.value = graded.length
-    paginateClientFilteredRows(Math.max(1, filters.page))
-    statusText.value = `代號「${String(filters.q).trim()}」精確符合 ${graded.length.toLocaleString()} 檔 · 第 ${filters.page} 頁`
+    })
+    if (requestId !== gradeRequestId || loadRequestId !== masterLoadRequestId) return
+    masterRows.value = filters.sort === 'grade' ? applyMasterSort(graded) : graded
+    statusText.value = statusLabel || `符合 ${masterTotal.value.toLocaleString()} 檔 · 第 ${filters.page} 頁`
   } finally {
-    enrichingGrades.value = false
+    if (requestId === gradeRequestId) enrichingGrades.value = false
   }
 }
 
@@ -411,6 +390,9 @@ const resultsMetaLabel = computed(() => {
 })
 
 const canExportMasterResults = computed(() => masterTotal.value > 0)
+const showResultGrades = computed(() =>
+  usesClientSideMasterResults() || hasSearchScope(),
+)
 
 function numOrUndef(v) {
   if (v === '' || v == null) return undefined
@@ -442,6 +424,9 @@ function hasSearchScope() {
 }
 
 async function loadMaster() {
+  const loadRequestId = ++masterLoadRequestId
+  gradeRequestId += 1
+  enrichingGrades.value = false
   loadingMaster.value = true
   try {
     const scoped = hasSearchScope()
@@ -450,25 +435,27 @@ async function loadMaster() {
 
     // 標的／權證代號：優先精確比對（不受技術面篩選路徑影響）
     if (codeQuery) {
-      statusText.value = '代號精確比對中…'
+      statusText.value = '載入當頁代號結果…'
       const lookupFilters = buildStockCodeLookupFilters(filters)
-      const raw = await fetchMasterRowsForQuery(lookupFilters, numOrUndef, {
-        onProgress: ({ loaded, total }) => {
-          statusText.value = `載入中… ${loaded.toLocaleString()} / ${total.toLocaleString()} 檔`
-        },
-      })
-      const rows = applyMasterSort(filterMasterRowsByQuery(keepUnexpiredRows(raw), filters.q))
-      taFilteredRows.value = rows
-      masterTotal.value = rows.length
-      clientFilterActive.value = true
-      paginateClientFilteredRows(Math.max(1, filters.page))
+      const data = await fetchMasterSearch(buildMasterSearchParams(lookupFilters, numOrUndef, {
+        page: filters.page,
+        pageSize: filters.pageSize,
+        sort: filters.sort,
+        sortDir: filters.sortDir,
+      }))
+      if (loadRequestId !== masterLoadRequestId) return
+      const rows = filterMasterRowsByQuery(keepUnexpiredRows(data.data || []), filters.q)
+      taFilteredRows.value = []
+      masterRows.value = rows
+      masterTotal.value = Number(data.total) || rows.length
+      clientFilterActive.value = false
       const qLabel = String(filters.q).trim()
-      statusText.value = rows.length
-        ? `標的／代號「${qLabel}」符合 ${rows.length.toLocaleString()} 檔 · 第 ${filters.page} 頁`
+      const doneLabel = rows.length
+        ? `標的／代號「${qLabel}」符合 ${masterTotal.value.toLocaleString()} 檔 · 第 ${filters.page} 頁`
         : `標的／代號「${qLabel}」沒有符合的未到期權證（可先按「清除基本面條件」再搜）`
-      // 代號／標的搜尋：等待評等算完再結束（loading 期間會顯示進度）
+      statusText.value = doneLabel
       if (rows.length > 0) {
-        await enrichCodeQueryGrades(rows)
+        void enrichVisiblePageGrades(rows, { loadRequestId, statusLabel: doneLabel })
       }
       return
     }
@@ -522,6 +509,7 @@ async function loadMaster() {
           },
         })
       }
+      if (loadRequestId !== masterLoadRequestId) return
       taFilteredRows.value = rows
       masterTotal.value = rows.length
       clientFilterActive.value = true
@@ -541,25 +529,30 @@ async function loadMaster() {
       sort: filters.sort,
       sortDir: filters.sortDir,
     }))
+    if (loadRequestId !== masterLoadRequestId) return
     masterRows.value = keepUnexpiredRows(data.data || [])
     masterTotal.value = data.total || 0
-    if (scoped && !wantClientFilter && masterTotal.value > 0) {
-      if (await enrichScopedSearchResults(scoped)) return
+    const doneLabel = `未到期主檔 ${data.total?.toLocaleString?.() || 0} 檔 · 顯示第 ${data.page} 頁`
+    statusText.value = doneLabel
+    if (scoped && !wantClientFilter && masterRows.value.length > 0) {
+      void enrichVisiblePageGrades([...masterRows.value], { loadRequestId, statusLabel: doneLabel })
     }
-    statusText.value = `未到期主檔 ${data.total?.toLocaleString?.() || 0} 檔 · 顯示第 ${data.page} 頁`
   } catch (err) {
+    if (loadRequestId !== masterLoadRequestId) return
     console.error(err)
     masterRows.value = []
     masterTotal.value = 0
     statusText.value = `主檔查詢失敗：${err.message}`
   } finally {
-    loadingMaster.value = false
-    if (masterTotal.value > 0) void syncMasterCarouselRows()
-    else {
-      masterCarouselRows.value = []
-      carouselIndex.value = 0
-      stopCarouselTimer()
-      carouselPlaying.value = false
+    if (loadRequestId === masterLoadRequestId) {
+      loadingMaster.value = false
+      if (masterTotal.value > 0) void syncMasterCarouselRows()
+      else {
+        masterCarouselRows.value = []
+        carouselIndex.value = 0
+        stopCarouselTimer()
+        carouselPlaying.value = false
+      }
     }
   }
 }
@@ -1289,7 +1282,7 @@ onUnmounted(() => {
           :export-include-index="masterExportIncludeIndex"
           :selected-code="selected?.warrant_code || ''"
           :open="true"
-          :show-grade="usesClientSideMasterResults()"
+          :show-grade="showResultGrades"
           @select="selectMasterWarrant"
           @page="onPage"
           @export="onExportMaster"
