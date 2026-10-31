@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { warrantTypeLabel, isPutWarrant } from '../utils/warrantDisplay.js'
+import { warrantTypeLabel, isPutWarrant, formatVolumeLots } from '../utils/warrantDisplay.js'
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
@@ -176,7 +176,7 @@ const sortableHeaders = [
             <td
               class="num mono"
               :class="{ 'metric-em': metric === 'volume' && sortKey === 'volume' }"
-            >{{ fmt(row.volume) }}</td>
+            >{{ formatVolumeLots(row.volume) }}</td>
             <td
               class="num mono"
               :class="{ 'metric-em': metric === 'turnover' && sortKey === 'turnover' }"

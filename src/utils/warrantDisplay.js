@@ -90,3 +90,21 @@ export function normalizeWarrantExpiryFields(row) {
     days_to_expiry: days ?? row.days_to_expiry ?? null,
   }
 }
+
+/** API 成交量多為股數；台股 1 張 = 1000 股 */
+const SHARES_PER_LOT = 1000
+
+export function volumeSharesToLots(shares) {
+  const n = Number(shares)
+  if (!Number.isFinite(n)) return null
+  return n / SHARES_PER_LOT
+}
+
+export function formatVolumeLots(shares, digits = 0) {
+  const lots = volumeSharesToLots(shares)
+  if (lots == null) return '—'
+  return lots.toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits > 0 ? 0 : undefined,
+  })
+}
