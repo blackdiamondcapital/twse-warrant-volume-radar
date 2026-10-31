@@ -45,7 +45,7 @@ const props = defineProps({
   fsHostQuadCell: { type: Boolean, default: false },
   /** 四分割格內圖表：不向上 emit fullscreen-change，避免關閉整層 chart-page */
   fsSuppressHostSync: { type: Boolean, default: false },
-  /** 權證雷達：全螢幕內顯示權證基本資料 */
+  /** 權證引擎：全螢幕內顯示權證基本資料 */
   warrantInfo: { type: Object, default: null },
 })
 
@@ -107,7 +107,7 @@ const warrantFsTitle = computed(() => {
   return [d.warrant_code, d.warrant_name].filter(Boolean).join(' · ')
 })
 
-/** 權證雷達（盤後）：固定日線，隱藏週期切換與 K 線模式 */
+/** 權證引擎（盤後）：固定日線，隱藏週期切換與 K 線模式 */
 const isWarrantRadar = computed(() => !!props.warrantInfo)
 
 const warrantInfoOpen = ref(false)
@@ -4319,7 +4319,7 @@ const showFullscreenCarouselControls = computed(() => {
 
 /** Mobile fullscreen (max-width 768px): toolbar collapse / expand */
 const showMobileFsToolbarCollapseUi = computed(() => isFullscreen.value && useMobileKlineDropdown.value)
-/** 權證雷達手機版：僅十字線查價，不用查價線 dock／導覽列 */
+/** 權證引擎手機版：僅十字線查價，不用查價線 dock／導覽列 */
 const useWarrantMobileCrosshair = computed(() => isWarrantRadar.value && isMobileUi.value)
 
 /** 與貼底 tooltip／觸控十字線相同的版面：顯示十字線查價開關 */
@@ -12150,7 +12150,7 @@ onUnmounted(() => {
         <!-- 手機全螢幕：K 線切換 | 股票查詢 | 圖示同一列；桌機用 display:contents 維持原 flex 子項 -->
         <div class="mobile-toolbar-secondary">
         <div class="kline-search-cluster">
-        <!-- K線模式：桌機三按鈕（原始／神奇／轉折）；手機／窄螢幕（isMobileUi）圖示下拉；權證雷達亦顯示 -->
+        <!-- K線模式：桌機三按鈕（原始／神奇／轉折）；手機／窄螢幕（isMobileUi）圖示下拉；權證引擎亦顯示 -->
         <div class="kline-mode-toggle">
           <template v-if="!isMobileUi">
             <button

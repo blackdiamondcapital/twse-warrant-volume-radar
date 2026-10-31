@@ -1,4 +1,4 @@
-# QuantGems 權證雷達
+# QuantGems 權證引擎
 
 台股權證主檔篩選、成交熱度排行與全螢幕技術分析（K 線、多空線、KD、RSI、MACD）。
 

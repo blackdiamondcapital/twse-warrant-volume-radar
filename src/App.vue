@@ -925,7 +925,7 @@ onUnmounted(() => {
           <div class="brand-text">
             <div class="brand-title-row">
               <span class="brand-name">QuantGems<sup class="tm-mark">®</sup></span>
-              <h1>權證雷達</h1>
+              <h1>權證引擎</h1>
             </div>
             <span class="brand-accent" aria-hidden="true"></span>
           </div>

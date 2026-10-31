@@ -7,7 +7,7 @@
       aria-live="polite"
     >
       <div class="pwa-install-icon">
-        <img src="/pwa-icon-192.png" alt="權證雷達" width="40" height="40" />
+        <img src="/pwa-icon-192.png" alt="權證引擎" width="40" height="40" />
       </div>
       <div class="pwa-install-text">
         <div class="pwa-install-title">發現新版本</div>
@@ -26,10 +26,10 @@
   <Transition name="pwa-slide">
     <div v-if="showPrompt && !needRefresh" class="pwa-install-banner">
       <div class="pwa-install-icon">
-        <img src="/pwa-icon-192.png" alt="權證雷達" width="40" height="40" />
+        <img src="/pwa-icon-192.png" alt="權證引擎" width="40" height="40" />
       </div>
       <div class="pwa-install-text">
-        <div class="pwa-install-title">安裝權證雷達</div>
+        <div class="pwa-install-title">安裝權證引擎</div>
         <div class="pwa-install-desc">加入主畫面，快速開啟 QuantGems 權證工具</div>
       </div>
       <div class="pwa-install-actions">
