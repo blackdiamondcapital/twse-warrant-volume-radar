@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 import { fetchMasterDetail } from '../api'
-import { normalizeWarrantExpiryFields, resolveExpiryDate, volumeSharesToLots } from './warrantDisplay.js'
+import { normalizeWarrantExpiryFields, resolveExpiryDate, resolveVolumeLots } from './warrantDisplay.js'
 import { rowToDetailSheetRow } from './exportMasterExcel.js'
 import { downloadExcelFile, pickExcelSaveLocation } from './downloadExcel.js'
 
@@ -77,7 +77,7 @@ async function enrichHeatRowsFromMaster(rows, { onProgress } = {}) {
 
 function rowToHeatDetailSheetRow(row) {
   const base = rowToDetailSheetRow(row)
-  const lots = volumeSharesToLots(row.volume)
+  const lots = resolveVolumeLots(row.volume, row.close_price, row.turnover)
   return {
     排名: row.rank ?? '',
     ...base,

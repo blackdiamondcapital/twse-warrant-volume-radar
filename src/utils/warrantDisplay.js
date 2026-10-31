@@ -91,17 +91,49 @@ export function normalizeWarrantExpiryFields(row) {
   }
 }
 
-/** API 成交量多為股數；台股 1 張 = 1000 股 */
+/** 台股 1 張 = 1000 股；權證 API 混用「張／股」，需對成交金額推斷 */
 const SHARES_PER_LOT = 1000
 
-export function volumeSharesToLots(shares) {
-  const n = Number(shares)
-  if (!Number.isFinite(n)) return null
-  return n / SHARES_PER_LOT
+function toFiniteNum(v) {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
 }
 
-export function formatVolumeLots(shares, digits = 0) {
-  const lots = volumeSharesToLots(shares)
+/** @returns {'lots'|'shares'|null} */
+export function detectWarrantVolumeUnit(volume, close, turnover) {
+  const v = toFiniteNum(volume)
+  if (v == null || v <= 0) return null
+  const c = toFiniteNum(close)
+  const t = toFiniteNum(turnover)
+  if (c != null && c > 0 && t != null && t > 0) {
+    const errLots = Math.abs(t - v * c * SHARES_PER_LOT) / t
+    const errShares = Math.abs(t - v * c) / t
+    if (errShares + 0.02 < errLots) return 'shares'
+    return 'lots'
+  }
+  if (v >= 500_000) return 'shares'
+  return 'lots'
+}
+
+/** 將 API 原始 volume 換算為張數 */
+export function resolveVolumeLots(volume, close, turnover) {
+  const v = toFiniteNum(volume)
+  if (v == null || v <= 0) return null
+  const unit = detectWarrantVolumeUnit(v, close, turnover)
+  if (unit === 'shares') return Math.round(v / SHARES_PER_LOT)
+  return Math.round(v)
+}
+
+/** StockChartECharts 個股邏輯以「股」計量 */
+export function resolveVolumeChartShares(volume, close, turnover) {
+  const lots = resolveVolumeLots(volume, close, turnover)
+  if (lots == null) return 0
+  return lots * SHARES_PER_LOT
+}
+
+export function formatVolumeLots(volume, close, turnover, digits = 0) {
+  const lots = resolveVolumeLots(volume, close, turnover)
   if (lots == null) return '—'
   return lots.toLocaleString(undefined, {
     maximumFractionDigits: digits,

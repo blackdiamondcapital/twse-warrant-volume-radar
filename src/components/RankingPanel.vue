@@ -1,6 +1,11 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { warrantTypeLabel, isPutWarrant, formatVolumeLots } from '../utils/warrantDisplay.js'
+import {
+  warrantTypeLabel,
+  isPutWarrant,
+  formatVolumeLots,
+  resolveVolumeLots,
+} from '../utils/warrantDisplay.js'
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
@@ -72,7 +77,12 @@ function compareRows(a, b) {
   if (key === 'rank') {
     return ((sortNum(a.rank) ?? 99999) - (sortNum(b.rank) ?? 99999)) * dir
   }
-  if (key === 'close_price' || key === 'volume' || key === 'turnover') {
+  if (key === 'volume') {
+    const la = resolveVolumeLots(a.volume, a.close_price, a.turnover) ?? -1
+    const lb = resolveVolumeLots(b.volume, b.close_price, b.turnover) ?? -1
+    return (la - lb) * dir
+  }
+  if (key === 'close_price' || key === 'turnover') {
     return ((sortNum(a[key]) ?? -1) - (sortNum(b[key]) ?? -1)) * dir
   }
   if (key === 'warrant_code') {
@@ -176,7 +186,7 @@ const sortableHeaders = [
             <td
               class="num mono"
               :class="{ 'metric-em': metric === 'volume' && sortKey === 'volume' }"
-            >{{ formatVolumeLots(row.volume) }}</td>
+            >{{ formatVolumeLots(row.volume, row.close_price, row.turnover) }}</td>
             <td
               class="num mono"
               :class="{ 'metric-em': metric === 'turnover' && sortKey === 'turnover' }"

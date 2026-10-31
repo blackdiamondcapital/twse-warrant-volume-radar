@@ -3,6 +3,7 @@
  * 行情改走權證 /warrants/timeseries；其餘功能以安全 stub 降級。
  */
 import { fetchTimeseries, fetchMasterSearch } from '../api.js'
+import { resolveVolumeChartShares } from '../utils/warrantDisplay.js'
 
 function toNum(v) {
   if (v == null || v === '') return null
@@ -32,25 +33,6 @@ function toIsoDate(v) {
   }
 }
 
-/**
- * 權證 API 的 volume 多為「張」；StockChartECharts 沿用現股邏輯會再 /1000 顯示張。
- * 餵圖表前轉成「股」(×1000)。若資料已誤存成股（對得上成交金額），則不乘。
- */
-function warrantVolumeToChartShares(volume, close, turnover) {
-  const v = toNum(volume) || 0
-  if (v <= 0) return 0
-  const c = toNum(close)
-  const t = toNum(turnover)
-  if (c != null && c > 0 && t != null && t > 0) {
-    const errLots = Math.abs(t - v * c * 1000) / t
-    const errShares = Math.abs(t - v * c) / t
-    if (errShares + 0.02 < errLots) return Math.round(v)
-  }
-  // 單日權證成交張數極少超過 50 萬；過大視為已是股
-  if (v >= 500000) return Math.round(v)
-  return Math.round(v * 1000)
-}
-
 function mapWarrantRow(item) {
   const time = toIsoDate(item.trade_date || item.time || item.date)
   const open = toNum(item.open_price ?? item.open)
@@ -58,7 +40,7 @@ function mapWarrantRow(item) {
   const low = toNum(item.low_price ?? item.low)
   const close = toNum(item.close_price ?? item.close)
   const turnover = toNum(item.turnover ?? item.trade_value)
-  const volume = warrantVolumeToChartShares(item.volume, close, turnover)
+  const volume = resolveVolumeChartShares(item.volume, close, turnover)
   return { time, open, high, low, close, volume }
 }
 
