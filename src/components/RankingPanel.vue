@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { warrantTypeLabel, isPutWarrant } from '../utils/warrantDisplay.js'
 
 const props = defineProps({
@@ -15,12 +15,92 @@ const props = defineProps({
 
 const emit = defineEmits(['select'])
 
+const SORT_LABELS = {
+  rank: '排名',
+  warrant_code: '代號',
+  warrant_name: '名稱',
+  underlying: '標的',
+  close_price: '收盤',
+  volume: '張數',
+  turnover: '金額',
+}
+
+const sortKey = ref('turnover')
+const sortDir = ref('desc')
+
+watch(
+  () => props.metric,
+  (m) => {
+    sortKey.value = m === 'volume' ? 'volume' : 'turnover'
+    sortDir.value = 'desc'
+  },
+  { immediate: true },
+)
+
+function defaultDirForKey(key) {
+  if (key === 'warrant_name' || key === 'underlying' || key === 'warrant_code') return 'asc'
+  return 'desc'
+}
+
+function toggleSort(key) {
+  if (sortKey.value === key) {
+    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortKey.value = key
+    sortDir.value = defaultDirForKey(key)
+  }
+}
+
+function sortClass(key) {
+  return sortKey.value === key ? 'is-active' : ''
+}
+
+function sortIcon(key) {
+  if (sortKey.value !== key) return '↕'
+  return sortDir.value === 'asc' ? '↑' : '↓'
+}
+
+function sortNum(v) {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+function compareRows(a, b) {
+  const dir = sortDir.value === 'asc' ? 1 : -1
+  const key = sortKey.value
+
+  if (key === 'rank') {
+    return ((sortNum(a.rank) ?? 99999) - (sortNum(b.rank) ?? 99999)) * dir
+  }
+  if (key === 'close_price' || key === 'volume' || key === 'turnover') {
+    return ((sortNum(a[key]) ?? -1) - (sortNum(b[key]) ?? -1)) * dir
+  }
+  if (key === 'warrant_code') {
+    return String(a.warrant_code || '').localeCompare(String(b.warrant_code || ''), 'zh-Hant') * dir
+  }
+  if (key === 'warrant_name') {
+    return String(a.warrant_name || '').localeCompare(String(b.warrant_name || ''), 'zh-Hant') * dir
+  }
+  if (key === 'underlying') {
+    const ac = String(a.underlying_code || '').localeCompare(String(b.underlying_code || ''), 'zh-Hant')
+    if (ac !== 0) return ac * dir
+    return String(a.underlying_name || '').localeCompare(String(b.underlying_name || ''), 'zh-Hant') * dir
+  }
+  return 0
+}
+
+const sortedRows = computed(() => {
+  if (!props.rows?.length) return []
+  return [...props.rows].sort(compareRows)
+})
+
 const subtitle = computed(() => {
   const parts = []
   if (props.tradeDate) parts.push(props.tradeDate)
   if (props.rows.length) parts.push(`共 ${props.rows.length} 檔`)
-  const metricLabel = props.metric === 'volume' ? '依張數排序' : '依金額排序'
-  parts.push(metricLabel)
+  const col = SORT_LABELS[sortKey.value] || sortKey.value
+  const dirLabel = sortDir.value === 'asc' ? '升冪' : '降冪'
+  parts.push(`依${col}${dirLabel}`)
   return parts.join(' · ')
 })
 
@@ -31,6 +111,16 @@ function fmt(n, digits = 0) {
     minimumFractionDigits: digits > 0 ? 0 : undefined,
   })
 }
+
+const sortableHeaders = [
+  { key: 'rank', label: '#', class: '' },
+  { key: 'warrant_code', label: '代號', class: '' },
+  { key: 'warrant_name', label: '名稱', class: '' },
+  { key: 'underlying', label: '標的', class: '' },
+  { key: 'close_price', label: '收盤', class: 'num' },
+  { key: 'volume', label: '張數', class: 'num' },
+  { key: 'turnover', label: '金額', class: 'num' },
+]
 </script>
 
 <template>
@@ -44,23 +134,31 @@ function fmt(n, digits = 0) {
       <table class="data">
         <thead>
           <tr>
-            <th>#</th>
-            <th>代號</th>
-            <th>名稱</th>
-            <th>標的</th>
-            <th>收盤</th>
-            <th class="num">張數</th>
-            <th class="num">金額</th>
+            <th
+              v-for="col in sortableHeaders"
+              :key="col.key"
+              :class="[col.class, { 'sortable-th': true, sorted: sortClass(col.key) === 'is-active' }]"
+            >
+              <button
+                type="button"
+                class="th-sort"
+                :class="sortClass(col.key)"
+                @click.stop="toggleSort(col.key)"
+              >
+                {{ col.label }}
+                <span class="th-sort-icon" aria-hidden="true">{{ sortIcon(col.key) }}</span>
+              </button>
+            </th>
           </tr>
         </thead>
         <tbody>
           <tr
-            v-for="row in rows"
+            v-for="(row, idx) in sortedRows"
             :key="`${row.market}-${row.warrant_code}`"
             :class="{ selected: selectedCode === row.warrant_code }"
             @click="emit('select', row)"
           >
-            <td class="mono">{{ row.rank }}</td>
+            <td class="mono">{{ idx + 1 }}</td>
             <td class="code-cell">
               <span class="mono code">{{ row.warrant_code }}</span>
               <span
@@ -75,8 +173,14 @@ function fmt(n, digits = 0) {
               <span class="underlying-name">{{ row.underlying_name || '—' }}</span>
             </td>
             <td class="num mono">{{ fmt(row.close_price, 2) }}</td>
-            <td class="num mono" :class="{ 'metric-em': metric === 'volume' }">{{ fmt(row.volume) }}</td>
-            <td class="num mono" :class="{ 'metric-em': metric === 'turnover' }">{{ fmt(row.turnover) }}</td>
+            <td
+              class="num mono"
+              :class="{ 'metric-em': metric === 'volume' && sortKey === 'volume' }"
+            >{{ fmt(row.volume) }}</td>
+            <td
+              class="num mono"
+              :class="{ 'metric-em': metric === 'turnover' && sortKey === 'turnover' }"
+            >{{ fmt(row.turnover) }}</td>
           </tr>
         </tbody>
       </table>
@@ -132,5 +236,42 @@ function fmt(n, digits = 0) {
 .metric-em {
   color: var(--cyan-bright, #38bdf8);
   font-weight: 650;
+}
+.sortable-th {
+  padding: 0;
+  vertical-align: middle;
+}
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  line-height: 1.2;
+}
+.sortable-th.num .th-sort {
+  justify-content: flex-end;
+}
+.th-sort:hover {
+  color: #e0f2fe;
+}
+.th-sort.is-active {
+  color: var(--cyan-bright, #38bdf8);
+}
+.th-sort-icon {
+  font-size: 0.72rem;
+  opacity: 0.45;
+  font-weight: 500;
+}
+.th-sort.is-active .th-sort-icon {
+  opacity: 1;
 }
 </style>
