@@ -1076,7 +1076,9 @@ onUnmounted(() => {
     <div class="topbar">
       <div class="home-link" aria-label="QuantGems 權證引擎">
         <span class="home-link-brand">QuantGems®</span>
-        <span class="home-link-site">權證引擎</span>
+        <span class="home-link-tag">
+          <span class="home-link-site">權證引擎</span>
+        </span>
       </div>
       <div class="auth-box">
         <template v-if="isAuthenticated">
@@ -1592,26 +1594,41 @@ onUnmounted(() => {
 }
 .home-link {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: nowrap;
-  gap: 0.35em;
+  gap: 10px;
   flex-shrink: 0;
-  color: var(--text-muted);
-  font-size: 0.92rem;
-  text-decoration: none;
-  line-height: 1.25;
+  min-width: 0;
+  font-size: 1.42rem;
+  line-height: 1;
+  color: #f7edd4;
 }
 .home-link-brand {
-  color: #f4e6c4;
+  font-size: inherit;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
+  color: #f7edd4;
+  text-shadow: 0 1px 0 rgba(255, 248, 230, 0.18);
+  white-space: nowrap;
+}
+.home-link-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: inherit;
+  line-height: 1;
+}
+.home-link-tag::before {
+  content: '';
+  width: 1px;
+  height: 0.85em;
+  background: linear-gradient(180deg, rgba(232, 201, 138, 0), #e8c98a 40%, rgba(232, 201, 138, 0));
 }
 .home-link-site {
-  color: #e8c98a;
+  font-size: 0.72em;
   font-weight: 650;
-}
-.home-link-brand,
-.home-link-site {
+  letter-spacing: 0.22em;
+  color: #e8c98a;
   white-space: nowrap;
 }
 
@@ -2530,10 +2547,11 @@ a.btn-auth {
 }
 @media (max-width: 640px) {
   .home-link {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0;
-    font-size: 0.8rem;
+    font-size: 1.18rem;
+    gap: 8px;
+  }
+  .home-link-site {
+    letter-spacing: 0.14em;
   }
   .auth-box {
     gap: 0.35rem;
