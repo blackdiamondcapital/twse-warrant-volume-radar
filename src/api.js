@@ -51,6 +51,32 @@ export async function fetchRankings({ date, metric = 'turnover', market = 'both'
   )
 }
 
+export async function fetchReturnRankings({
+  date,
+  period = 'daily',
+  market = 'both',
+  type = '',
+  rankingType = 'gainers',
+  limit = 100,
+} = {}) {
+  const kind = type === 'call' || type === 'put' ? type : ''
+  return unwrap(
+    await api.get('/warrants/returns', {
+      params: {
+        date: date || undefined,
+        period,
+        market: market || 'both',
+        limit,
+        rankingType,
+        wtype: kind || undefined,
+        _ts: Date.now(),
+      },
+      headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' },
+    }),
+    '報酬排行查詢失敗',
+  )
+}
+
 export async function fetchTimeseries({ code, limitDays = 90, start, end } = {}) {
   return unwrap(
     await api.get('/warrants/timeseries', {

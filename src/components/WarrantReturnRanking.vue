@@ -1,8 +1,8 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { fetchDates, fetchRankings, fetchTimeseries } from '../api'
+import { fetchDates, fetchReturnRankings } from '../api'
 import RankingPanel from './RankingPanel.vue'
-import { computeChangeFromBars } from '../utils/warrantDisplay.js'
+import { normalizeWarrantExpiryFields } from '../utils/warrantDisplay.js'
 
 const props = defineProps({
   selectedCode: { type: String, default: '' },
@@ -17,41 +17,24 @@ const datesOpen = ref(false)
 const market = ref('both')
 const heatType = ref('')
 const rankingType = ref('gainers')
+const period = ref('daily')
+const PERIOD_OPTIONS = [
+  { value: 'daily', label: '日' },
+  { value: 'weekly', label: '週' },
+  { value: 'monthly', label: '月' },
+]
 const rows = ref([])
 const loading = ref(false)
 const errorText = ref('')
 let reqId = 0
 
+const periodLabel = computed(() => PERIOD_OPTIONS.find((item) => item.value === period.value)?.label || '日')
+
 const summary = computed(() => {
   const side = rankingType.value === 'losers' ? '跌幅' : '漲幅'
   const n = rows.value.length
-  return `${selectedDate.value || '—'} · ${side} · ${n} 檔`
+  return `${selectedDate.value || '—'} · ${periodLabel.value} · ${side} · ${n} 檔`
 })
-
-function hasChange(row) {
-  return row?.price_change != null || row?.change_pct != null
-}
-
-function shiftIsoDate(iso, days) {
-  const raw = String(iso || '').slice(0, 10)
-  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!m) return ''
-  const dt = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
-  dt.setUTCDate(dt.getUTCDate() + days)
-  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
-}
-
-async function mapPool(items, limit, fn) {
-  if (!items.length) return
-  let cursor = 0
-  async function worker() {
-    while (cursor < items.length) {
-      const idx = cursor++
-      await fn(items[idx], idx)
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
-}
 
 async function loadDateList() {
   try {
@@ -63,78 +46,29 @@ async function loadDateList() {
   }
 }
 
-async function enrichChange(list, tradeDate, id) {
-  const need = (list || []).filter((row) => {
-    if (!row?.warrant_code) return false
-    if (!hasChange(row)) return true
-    const chg = Number(row.price_change)
-    const pct = Number(row.change_pct)
-    return (row.price_change == null || chg === 0) && (row.change_pct == null || pct === 0)
-  })
-  if (!need.length) return
-  const end = String(tradeDate || '').slice(0, 10)
-  const start = shiftIsoDate(end, -21)
-  await mapPool(need, 8, async (row) => {
-    if (id !== reqId) return
-    try {
-      const data = await fetchTimeseries({
-        code: row.warrant_code,
-        start: start || undefined,
-        end: end || undefined,
-        limitDays: 12,
-      })
-      const next = computeChangeFromBars(data?.data || data?.rows || [], end)
-      if (next.price_change == null && next.change_pct == null) return
-      if (id !== reqId) return
-      const idx = rows.value.findIndex(
-        (item) => item.warrant_code === row.warrant_code && item.market === row.market,
-      )
-      if (idx < 0) return
-      rows.value[idx] = { ...rows.value[idx], ...next }
-    } catch {
-      /* ignore */
-    }
-  })
-}
-
-function sortByReturn(list) {
-  const dir = rankingType.value === 'losers' ? 1 : -1
-  return [...list].sort((a, b) => {
-    const pa = Number(a.change_pct)
-    const pb = Number(b.change_pct)
-    const aOk = Number.isFinite(pa)
-    const bOk = Number.isFinite(pb)
-    if (aOk && bOk) return (pa - pb) * dir
-    if (aOk) return -1
-    if (bOk) return 1
-    return 0
-  })
-}
-
 async function loadRanking() {
   const id = ++reqId
   loading.value = true
   errorText.value = ''
   try {
     const kind = heatType.value === '認購' ? 'call' : heatType.value === '認售' ? 'put' : ''
-    const data = await fetchRankings({
+    const data = await fetchReturnRankings({
       date: selectedDate.value || undefined,
-      metric: 'turnover',
+      period: period.value,
       market: market.value,
       type: kind,
+      rankingType: rankingType.value,
       limit: 100,
     })
     if (id !== reqId) return
     if (data.date) selectedDate.value = data.date
-    const mapped = (data.rows || []).map((r, i) => ({ ...r, rank: r.rank ?? i + 1 }))
-    rows.value = sortByReturn(mapped)
+    const mapped = (data.rows || []).map((r, i) => normalizeWarrantExpiryFields({
+      ...r,
+      rank: r.rank ?? i + 1,
+    }))
+    rows.value = mapped
     if (!mapped.length) {
       errorText.value = '目前沒有可排行的權證成交資料'
-    } else {
-      void enrichChange(mapped, data.date || selectedDate.value, id).then(() => {
-        if (id !== reqId) return
-        rows.value = sortByReturn(rows.value)
-      })
     }
   } catch (err) {
     if (id !== reqId) return
@@ -157,12 +91,8 @@ watch(market, async () => {
   await loadRanking()
 })
 
-watch(heatType, () => {
+watch([heatType, rankingType, period], () => {
   loadRanking()
-})
-
-watch(rankingType, () => {
-  rows.value = sortByReturn(rows.value)
 })
 
 onMounted(async () => {
@@ -202,6 +132,17 @@ onMounted(async () => {
           </div>
         </div>
         <div class="heat-row heat-row--controls">
+          <span class="heat-row-label">期別</span>
+          <div class="chip-btns ranking-period-toggle">
+            <button
+              v-for="item in PERIOD_OPTIONS"
+              :key="item.value"
+              type="button"
+              class="chip-btn period-chip"
+              :class="{ active: period === item.value }"
+              @click="period = item.value"
+            >{{ item.label }}</button>
+          </div>
           <span class="heat-row-label">榜別</span>
           <div class="chip-btns ranking-type-toggle">
             <button type="button" class="chip-btn ranking-type-chip" :class="{ active: rankingType === 'gainers' }" @click="rankingType = 'gainers'">漲幅</button>
@@ -223,7 +164,7 @@ onMounted(async () => {
       </div>
     </div>
     <RankingPanel
-      :key="rankingType"
+      :key="`${period}-${rankingType}`"
       :rows="rows"
       :loading="loading"
       :selected-code="selectedCode"
