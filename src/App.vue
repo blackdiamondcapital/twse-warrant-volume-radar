@@ -182,7 +182,9 @@ function applyMasterSort(rows) {
 }
 
 function defaultMasterSortDir(key) {
-  if (key === 'code' || key === 'name' || key === 'underlying' || key === 'expiry') return 'asc'
+  if (key === 'code' || key === 'name' || key === 'underlying' || key === 'expiry' || key === 'days') {
+    return 'asc'
+  }
   return 'desc'
 }
 
@@ -662,6 +664,8 @@ async function mapPool(items, limit, fn) {
 }
 
 function scheduleMasterPriceEnrich() {
+  const sortKey = filters.sort === 'change' ? 'price_change' : filters.sort
+  if (sortKey === 'price_change' || sortKey === 'change_pct') return
   const rows = masterRows.value
   if (!rows?.length) return
   void enrichMasterPriceChange(rows, masterLoadRequestId)

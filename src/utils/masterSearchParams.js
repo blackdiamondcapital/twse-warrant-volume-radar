@@ -43,6 +43,7 @@ export function buildMasterSearchParams(filters, numOrUndef, {
     daysMin: numOrUndef(f.daysMin),
     daysMax: numOrUndef(f.daysMax),
     sort: sortKey,
+    sortBy: sortKey,
     sortDir: sortDir ?? f.sortDir ?? 'asc',
     page,
     pageSize,
