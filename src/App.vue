@@ -221,9 +221,9 @@ const heatSectionOpen = ref(true)
 /** 當日熱度：日期 chip 預設收合，避免大量交易日換行佔滿版面 */
 const heatDatesOpen = ref(false)
 const exportingHeat = ref(false)
-/** 站內選單：heat／screener／watchlist／ranking 皆為權證引擎功能 */
+/** 站內選單：heat／search／screener／watchlist／ranking 皆為權證引擎功能 */
 const engineView = ref('heat')
-const ENGINE_VIEWS = ['heat', 'screener', 'watchlist', 'ranking']
+const ENGINE_VIEWS = ['heat', 'search', 'screener', 'watchlist', 'ranking']
 const watchlistTick = ref(0)
 const watchlistCodes = computed(() => {
   watchlistTick.value
@@ -885,6 +885,7 @@ async function onSearch() {
 
 function backToSearch() {
   showMasterResults.value = false
+  engineView.value = 'search'
   stopCarouselTimer()
   carouselPlaying.value = false
   masterCarouselRows.value = []
@@ -1129,6 +1130,15 @@ onUnmounted(() => {
         <button
           type="button"
           class="nav-item"
+          :class="{ active: engineView === 'search' }"
+          @click="setEngineView('search')"
+        >
+          <i class="fas fa-search" aria-hidden="true"></i>
+          權證搜尋
+        </button>
+        <button
+          type="button"
+          class="nav-item"
           :class="{ active: engineView === 'screener' }"
           @click="setEngineView('screener')"
         >
@@ -1156,7 +1166,7 @@ onUnmounted(() => {
       </div>
     </nav>
 
-    <template v-if="engineView === 'heat' || (engineView === 'screener' && !showMasterResults)">
+    <template v-if="engineView === 'heat' || engineView === 'search' || (engineView === 'screener' && !showMasterResults)">
     <header class="hero">
       <p class="lede">從權證總覽篩選全市場標的，追蹤當日成交熱度，並以全螢幕技術分析檢視單檔走勢。</p>
       <p v-if="stats" class="hero-stats">
@@ -1273,8 +1283,13 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <template v-if="engineView === 'screener' && !showMasterResults">
+    <template v-if="engineView === 'search'">
     <section class="search-bar panel">
+      <div class="search-page-head">
+        <i class="fas fa-search" aria-hidden="true"></i>
+        <h2>權證搜尋</h2>
+        <span class="muted">依代號、基本面與技術面篩選權證</span>
+      </div>
       <div class="search-main">
         <div class="step-head">
           <span class="step-num">01</span>
@@ -1385,9 +1400,11 @@ onUnmounted(() => {
         >清除技術面</button>
       </div>
     </section>
-
     <p v-if="statusText" class="status muted">{{ statusText }}</p>
+    </template>
 
+    <template v-if="engineView === 'screener' && !showMasterResults">
+    <p v-if="statusText" class="status muted">{{ statusText }}</p>
     <div class="workspace">
       <MasterScreener
         :rows="masterRows"
@@ -1868,6 +1885,22 @@ a.btn-auth {
   padding: 1rem 1.1rem 1.15rem;
   margin-bottom: 0.75rem;
   animation: rise 1s ease both;
+}
+.search-page-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+.search-page-head i {
+  color: #e8c98a;
+}
+.search-page-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #f4e6c4;
+  letter-spacing: 0.04em;
 }
 .search-main label,
 .filters label {
