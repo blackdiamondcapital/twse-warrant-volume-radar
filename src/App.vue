@@ -15,6 +15,8 @@ import { buildOAuthStartUrl } from './lib/oauthStart'
 import { useAuth } from './lib/auth'
 import MasterScreener from './components/MasterScreener.vue'
 import RankingPanel from './components/RankingPanel.vue'
+import WarrantWatchlist from './components/WarrantWatchlist.vue'
+import WarrantReturnRanking from './components/WarrantReturnRanking.vue'
 import StockChartECharts from './components/StockChartECharts.vue'
 import PwaInstallPrompt from './components/PwaInstallPrompt.vue'
 import { exportMasterToExcel, fetchMasterRowsUpTo } from './utils/exportMasterExcel.js'
@@ -25,7 +27,8 @@ import { filterMasterRowsByQuery, isCodeLikeMasterQuery, buildStockCodeLookupFil
 import { filterMasterRowsClient, TA_FULL_MARKET_SCAN_CAP, TA_SCOPED_SCAN_CAP, TA_BACKEND_CLIENT_CAP } from './utils/taScreenFilter.js'
 import { isUnexpiredWarrant, computeChangeFromBars } from './utils/warrantDisplay.js'
 import { hasActiveTaFilters, hasBackendTaFilters, hasClientOnlyTaFilters, pickClientOnlyTaFilters } from './lib/taScreenRules.js'
-import { getCarouselLimitForUser } from './utils/planAccess.js'
+import { getCarouselLimitForUser, getWatchlistLimitsForUser } from './utils/planAccess.js'
+import { readWarrantWatchlist, toggleWarrantWatchlist } from './utils/warrantWatchlist.js'
 
 const {
   isAuthenticated,
@@ -40,9 +43,6 @@ const {
 } = useAuth()
 
 const authStatus = ref('')
-const MAIN_SITE_URL = 'https://www.quantgems.com'
-const MAIN_WATCHLIST_URL = `${MAIN_SITE_URL}/?view=watchlist`
-const MAIN_RANKING_URL = `${MAIN_SITE_URL}/ranking`
 
 function handleGoogleLogin() {
   const url = buildOAuthStartUrl('google')
@@ -221,8 +221,14 @@ const heatSectionOpen = ref(true)
 /** 當日熱度：日期 chip 預設收合，避免大量交易日換行佔滿版面 */
 const heatDatesOpen = ref(false)
 const exportingHeat = ref(false)
-/** 主站式選單：heat＝當日熱度、screener＝權證總覽（搜尋＋主檔） */
+/** 站內選單：heat／screener／watchlist／ranking 皆為權證引擎功能 */
 const engineView = ref('heat')
+const ENGINE_VIEWS = ['heat', 'screener', 'watchlist', 'ranking']
+const watchlistTick = ref(0)
+const watchlistCodes = computed(() => {
+  watchlistTick.value
+  return readWarrantWatchlist(user.value)
+})
 
 const dates = ref([])
 const selectedDate = ref('')
@@ -847,12 +853,24 @@ function openTechChartOrLogin() {
 }
 
 function setEngineView(view) {
-  if (view !== 'heat' && view !== 'screener') return
+  if (!ENGINE_VIEWS.includes(view)) return
   engineView.value = view
   window.scrollTo({ top: 0, behavior: 'smooth' })
   if (view === 'screener' && !showMasterResults.value && masterScreenerOpen.value) {
     loadMaster()
   }
+}
+
+function onToggleWatchlist(row) {
+  const code = row?.warrant_code
+  if (!code) return
+  const limits = getWatchlistLimitsForUser(user.value)
+  const res = toggleWarrantWatchlist(user.value, code, limits.maxPerGroup)
+  if (!res.ok) {
+    statusText.value = res.error || '自選股更新失敗'
+    return
+  }
+  watchlistTick.value += 1
 }
 
 async function onSearch() {
@@ -1115,18 +1133,28 @@ onUnmounted(() => {
           <i class="fas fa-filter" aria-hidden="true"></i>
           權證總覽
         </button>
-        <a class="nav-item" :href="MAIN_WATCHLIST_URL">
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ active: engineView === 'watchlist' }"
+          @click="setEngineView('watchlist')"
+        >
           <i class="fas fa-star" aria-hidden="true"></i>
           自選股
-        </a>
-        <a class="nav-item" :href="MAIN_RANKING_URL">
+        </button>
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ active: engineView === 'ranking' }"
+          @click="setEngineView('ranking')"
+        >
           <i class="fas fa-trophy" aria-hidden="true"></i>
           報酬排行
-        </a>
+        </button>
       </div>
     </nav>
 
-    <template v-if="engineView === 'heat' || !showMasterResults">
+    <template v-if="engineView === 'heat' || (engineView === 'screener' && !showMasterResults)">
     <header class="hero">
       <div class="page-title">
         <i class="fas fa-satellite-dish" aria-hidden="true"></i>
@@ -1243,7 +1271,9 @@ onUnmounted(() => {
           :api-type="rankingsMeta.type"
           :error-text="rankingsError"
           :trade-date="selectedDate"
+          :starred-codes="watchlistCodes"
           @select="selectWarrant"
+          @toggle-star="onToggleWatchlist"
         />
       </div>
     </section>
@@ -1377,12 +1407,14 @@ onUnmounted(() => {
         :sort="filters.sort"
         :sort-dir="filters.sortDir"
         :open="masterScreenerOpen"
+        :starred-codes="watchlistCodes"
         @select="selectMasterWarrant"
         @sort="setMasterSort"
         @page="onPage"
         @toggle="toggleMasterScreener"
         @export="onExportMaster"
         @update:export-include-index="masterExportIncludeIndex = $event"
+        @toggle-star="onToggleWatchlist"
       />
     </div>
     </template>
@@ -1464,11 +1496,13 @@ onUnmounted(() => {
           :sort="filters.sort"
           :sort-dir="filters.sortDir"
           :open="true"
+          :starred-codes="watchlistCodes"
           @select="selectMasterWarrant"
           @sort="setMasterSort"
           @page="onPage"
           @export="onExportMaster"
           @update:export-include-index="masterExportIncludeIndex = $event"
+          @toggle-star="onToggleWatchlist"
         />
 
         <div v-if="masterCarouselEnabled" class="carousel-bar panel carousel-bar--mobile">
@@ -1500,6 +1534,23 @@ onUnmounted(() => {
         </div>
       </section>
     </template>
+
+    <WarrantWatchlist
+      v-if="engineView === 'watchlist'"
+      :user="user"
+      :codes="watchlistCodes"
+      :selected-code="selected?.warrant_code || ''"
+      @select="selectWarrant"
+      @changed="watchlistTick += 1"
+    />
+
+    <WarrantReturnRanking
+      v-if="engineView === 'ranking'"
+      :selected-code="selected?.warrant_code || ''"
+      :starred-codes="watchlistCodes"
+      @select="selectWarrant"
+      @toggle-star="onToggleWatchlist"
+    />
 
     <div class="chart-host" aria-hidden="true">
       <StockChartECharts

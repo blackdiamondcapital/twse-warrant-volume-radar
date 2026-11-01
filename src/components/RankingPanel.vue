@@ -16,9 +16,12 @@ const props = defineProps({
   apiType: { type: String, default: null },
   errorText: { type: String, default: '' },
   tradeDate: { type: String, default: '' },
+  defaultSort: { type: String, default: '' },
+  defaultDir: { type: String, default: '' },
+  starredCodes: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['select'])
+const emit = defineEmits(['select', 'toggle-star'])
 
 const SORT_LABELS = {
   rank: '排名',
@@ -35,10 +38,23 @@ const SORT_LABELS = {
 const sortKey = ref('turnover')
 const sortDir = ref('desc')
 
+const starredSet = computed(() => new Set(
+  (props.starredCodes || []).map((c) => String(c || '').toUpperCase()),
+))
+
+function isStarred(row) {
+  return starredSet.value.has(String(row?.warrant_code || '').toUpperCase())
+}
+
 watch(
-  () => props.metric,
-  (m) => {
-    sortKey.value = m === 'volume' ? 'volume' : 'turnover'
+  () => [props.defaultSort, props.defaultDir, props.metric],
+  () => {
+    if (props.defaultSort) {
+      sortKey.value = props.defaultSort
+      sortDir.value = props.defaultDir || defaultDirForKey(props.defaultSort)
+      return
+    }
+    sortKey.value = props.metric === 'volume' ? 'volume' : 'turnover'
     sortDir.value = 'desc'
   },
   { immediate: true },
@@ -173,6 +189,7 @@ function changeToneClass(n) {
 }
 
 const sortableHeaders = [
+  { key: 'star', label: '', class: 'star-col' },
   { key: 'rank', label: '#', class: '' },
   { key: 'warrant_code', label: '代號', class: '' },
   { key: 'warrant_name', label: '名稱', class: '' },
@@ -199,9 +216,10 @@ const sortableHeaders = [
             <th
               v-for="col in sortableHeaders"
               :key="col.key"
-              :class="[col.class, { 'sortable-th': true, sorted: sortClass(col.key) === 'is-active' }]"
+              :class="[col.class, { 'sortable-th': col.key !== 'star', sorted: sortClass(col.key) === 'is-active' }]"
             >
               <button
+                v-if="col.key !== 'star'"
                 type="button"
                 class="th-sort"
                 :class="sortClass(col.key)"
@@ -220,6 +238,15 @@ const sortableHeaders = [
             :class="{ selected: selectedCode === row.warrant_code }"
             @click="emit('select', row)"
           >
+            <td class="star-col">
+              <button
+                type="button"
+                class="star-btn"
+                :class="{ 'is-on': isStarred(row) }"
+                :title="isStarred(row) ? '移出自選' : '加入自選'"
+                @click.stop="emit('toggle-star', row)"
+              >{{ isStarred(row) ? '★' : '☆' }}</button>
+            </td>
             <td class="mono">{{ idx + 1 }}</td>
             <td class="code-cell">
               <span class="mono code">{{ row.warrant_code }}</span>
@@ -349,5 +376,24 @@ const sortableHeaders = [
 }
 .th-sort.is-active .th-sort-icon {
   opacity: 1;
+}
+.star-col {
+  width: 2.1rem;
+  text-align: center;
+  padding-left: 0.35rem;
+  padding-right: 0.2rem;
+}
+.star-btn {
+  border: 0;
+  background: transparent;
+  color: rgba(232, 201, 138, 0.4);
+  font-size: 1.05rem;
+  padding: 0.05rem 0.15rem;
+  cursor: pointer;
+  line-height: 1;
+}
+.star-btn.is-on,
+.star-btn:hover {
+  color: #e8c98a;
 }
 </style>

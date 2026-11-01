@@ -18,9 +18,18 @@ const props = defineProps({
   exportIncludeIndex: { type: Boolean, default: false },
   sort: { type: String, default: 'expiry' },
   sortDir: { type: String, default: 'asc' },
+  starredCodes: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['select', 'page', 'toggle', 'export', 'update:exportIncludeIndex', 'sort'])
+const emit = defineEmits(['select', 'page', 'toggle', 'export', 'update:exportIncludeIndex', 'sort', 'toggle-star'])
+
+const starredSet = computed(() => new Set(
+  (props.starredCodes || []).map((c) => String(c || '').toUpperCase()),
+))
+
+function isStarred(row) {
+  return starredSet.value.has(String(row?.warrant_code || '').toUpperCase())
+}
 
 const displayTotal = computed(() => {
   if (props.total > 0) return props.total
@@ -224,6 +233,7 @@ function changeToneClass(n) {
       <div v-else class="table-wrap">
         <table class="data master-table">
           <colgroup>
+            <col class="col-star" />
             <col class="col-code" />
             <col class="col-name" />
             <col class="col-underlying" />
@@ -237,6 +247,7 @@ function changeToneClass(n) {
           </colgroup>
           <thead>
             <tr>
+              <th class="star-col"></th>
               <th
                 v-for="col in columns"
                 :key="col.key"
@@ -277,6 +288,15 @@ function changeToneClass(n) {
               :class="{ selected: selectedCode === row.warrant_code }"
               @click="emit('select', row)"
             >
+              <td class="star-col" @click.stop>
+                <button
+                  type="button"
+                  class="star-btn"
+                  :class="{ 'is-on': isStarred(row) }"
+                  :title="isStarred(row) ? '移出自選' : '加入自選'"
+                  @click="emit('toggle-star', row)"
+                >{{ isStarred(row) ? '★' : '☆' }}</button>
+              </td>
               <td class="mono col-code">{{ row.warrant_code }}</td>
               <td class="col-name" :title="row.warrant_name || ''">{{ row.warrant_name }}</td>
               <td class="underlying col-underlying">
@@ -330,7 +350,22 @@ function changeToneClass(n) {
   table-layout: fixed;
   min-width: 980px;
 }
+.master-table .col-star { width: 2.1rem; }
 .master-table .col-code { width: 5.6rem; }
+.star-col { text-align: center; }
+.star-btn {
+  border: 0;
+  background: transparent;
+  color: rgba(232, 201, 138, 0.4);
+  font-size: 1.05rem;
+  padding: 0.05rem 0.15rem;
+  cursor: pointer;
+  line-height: 1;
+}
+.star-btn.is-on,
+.star-btn:hover {
+  color: #e8c98a;
+}
 .master-table .col-name { width: 10.5rem; }
 .master-table .col-underlying { width: 5.2rem; }
 .master-table .col-close { width: 4rem; }
