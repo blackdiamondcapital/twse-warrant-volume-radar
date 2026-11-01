@@ -25,7 +25,7 @@ import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { buildMasterSearchParams } from './utils/masterSearchParams.js'
 import { filterMasterRowsByQuery, isCodeLikeMasterQuery, buildStockCodeLookupFilters } from './utils/masterSearchMatch.js'
 import { filterMasterRowsClient, TA_FULL_MARKET_SCAN_CAP, TA_SCOPED_SCAN_CAP, TA_BACKEND_CLIENT_CAP } from './utils/taScreenFilter.js'
-import { isUnexpiredWarrant, computeChangeFromBars } from './utils/warrantDisplay.js'
+import { isUnexpiredWarrant, computeChangeFromBars, resolveDaysToExpiry, resolveExpiryDate } from './utils/warrantDisplay.js'
 import {
   hasActiveTaFilters,
   hasBackendTaFilters,
@@ -129,41 +129,55 @@ function rowChangePctForSort(row) {
   return (chg / ref) * 100
 }
 
+function compareNullableNum(a, b, dir) {
+  if (a == null && b == null) return 0
+  if (a == null) return 1
+  if (b == null) return -1
+  if (a === b) return 0
+  return a > b ? dir : -dir
+}
+
+function compareText(a, b, dir) {
+  const sa = String(a || '')
+  const sb = String(b || '')
+  if (!sa && !sb) return 0
+  if (!sa) return 1
+  if (!sb) return -1
+  return sa.localeCompare(sb, 'zh-Hant', { numeric: true, sensitivity: 'base' }) * dir
+}
+
 function applyMasterSort(rows) {
   if (!rows?.length) return rows
   const dir = filters.sortDir === 'desc' ? -1 : 1
-  const key = filters.sort
+  const key = filters.sort === 'change' ? 'price_change' : filters.sort
   return [...rows].sort((a, b) => {
+    let cmp = 0
     if (key === 'code') {
-      return String(a.warrant_code || '').localeCompare(String(b.warrant_code || '')) * dir
+      cmp = compareText(a.warrant_code, b.warrant_code, dir)
+    } else if (key === 'name') {
+      cmp = compareText(a.warrant_name, b.warrant_name, dir)
+    } else if (key === 'underlying') {
+      cmp = compareText(a.underlying_code, b.underlying_code, dir)
+      if (!cmp) cmp = compareText(a.underlying_name, b.underlying_name, dir)
+    } else if (key === 'volume') {
+      cmp = compareNullableNum(sortNum(a.volume), sortNum(b.volume), dir)
+    } else if (key === 'days') {
+      cmp = compareNullableNum(resolveDaysToExpiry(a), resolveDaysToExpiry(b), dir)
+    } else if (key === 'close') {
+      cmp = compareNullableNum(sortNum(a.close_price), sortNum(b.close_price), dir)
+    } else if (key === 'price_change') {
+      cmp = compareNullableNum(sortNum(a.price_change), sortNum(b.price_change), dir)
+    } else if (key === 'change_pct') {
+      cmp = compareNullableNum(rowChangePctForSort(a), rowChangePctForSort(b), dir)
+    } else if (key === 'exercise') {
+      cmp = compareNullableNum(sortNum(a.latest_exercise_price), sortNum(b.latest_exercise_price), dir)
+    } else if (key === 'turnover') {
+      cmp = compareNullableNum(sortNum(a.turnover), sortNum(b.turnover), dir)
+    } else {
+      cmp = compareText(resolveExpiryDate(a), resolveExpiryDate(b), dir)
     }
-    if (key === 'name') {
-      return String(a.warrant_name || '').localeCompare(String(b.warrant_name || '')) * dir
-    }
-    if (key === 'underlying') {
-      const ua = String(a.underlying_code || a.underlying_name || '')
-      const ub = String(b.underlying_code || b.underlying_name || '')
-      return ua.localeCompare(ub) * dir
-    }
-    if (key === 'volume') {
-      return ((sortNum(a.volume) ?? -1) - (sortNum(b.volume) ?? -1)) * dir
-    }
-    if (key === 'days') {
-      return ((sortNum(a.days_to_expiry) ?? 99999) - (sortNum(b.days_to_expiry) ?? 99999)) * dir
-    }
-    if (key === 'close') {
-      return ((sortNum(a.close_price) ?? -1) - (sortNum(b.close_price) ?? -1)) * dir
-    }
-    if (key === 'price_change' || key === 'change') {
-      return ((sortNum(a.price_change) ?? -1e18) - (sortNum(b.price_change) ?? -1e18)) * dir
-    }
-    if (key === 'change_pct') {
-      return ((rowChangePctForSort(a) ?? -1e18) - (rowChangePctForSort(b) ?? -1e18)) * dir
-    }
-    if (key === 'exercise') {
-      return ((sortNum(a.latest_exercise_price) ?? -1) - (sortNum(b.latest_exercise_price) ?? -1)) * dir
-    }
-    return String(a.expiry_date || '').localeCompare(String(b.expiry_date || '')) * dir
+    if (cmp) return cmp
+    return compareText(a.warrant_code, b.warrant_code, 1)
   })
 }
 
@@ -647,10 +661,24 @@ async function mapPool(items, limit, fn) {
   await Promise.all(Array.from({ length: n }, () => worker()))
 }
 
+const PRICE_SORT_KEYS = new Set(['close', 'volume', 'turnover', 'price_change', 'change', 'change_pct'])
+
+function resortMasterRowsAfterEnrich() {
+  if (!PRICE_SORT_KEYS.has(filters.sort)) return
+  if (clientFilterActive.value) {
+    taFilteredRows.value = applyMasterSort(taFilteredRows.value)
+    paginateClientFilteredRows(filters.page)
+    return
+  }
+  masterRows.value = applyMasterSort(masterRows.value)
+}
+
 function scheduleMasterPriceEnrich() {
   const rows = masterRows.value
   if (!rows?.length) return
-  void enrichMasterPriceChange(rows, masterLoadRequestId)
+  void enrichMasterPriceChange(rows, masterLoadRequestId).then(() => {
+    if (masterLoadRequestId) resortMasterRowsAfterEnrich()
+  })
 }
 
 async function enrichMasterPriceChange(rows, loadRequestId) {
