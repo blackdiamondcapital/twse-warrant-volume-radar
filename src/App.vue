@@ -25,7 +25,7 @@ import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { buildMasterSearchParams } from './utils/masterSearchParams.js'
 import { filterMasterRowsByQuery, isCodeLikeMasterQuery, buildStockCodeLookupFilters } from './utils/masterSearchMatch.js'
 import { filterMasterRowsClient, TA_FULL_MARKET_SCAN_CAP, TA_SCOPED_SCAN_CAP, TA_BACKEND_CLIENT_CAP } from './utils/taScreenFilter.js'
-import { isUnexpiredWarrant, computeChangeFromBars, resolveDaysToExpiry, resolveExpiryDate } from './utils/warrantDisplay.js'
+import { isUnexpiredWarrant, computeChangeFromBars, resolveDaysToExpiry, resolveExpiryDate, normalizeWarrantExpiryFields } from './utils/warrantDisplay.js'
 import {
   hasActiveTaFilters,
   hasBackendTaFilters,
@@ -784,7 +784,10 @@ async function loadRankings() {
     }
     if (reqId !== rankingsReqId) return
 
-    const rows = (data.rows || []).map((r, i) => ({ ...r, rank: r.rank ?? i + 1 }))
+    const rows = (data.rows || []).map((r, i) => normalizeWarrantExpiryFields({
+      ...r,
+      rank: r.rank ?? i + 1,
+    }))
     rankings.value = rows
     rankingsMeta.value = { kind: data.kind || expectedKind, type: data.type || expectedType }
     if (data.date) selectedDate.value = data.date

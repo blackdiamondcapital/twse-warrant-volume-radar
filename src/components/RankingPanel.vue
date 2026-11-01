@@ -5,6 +5,8 @@ import {
   isPutWarrant,
   formatVolumeLots,
   resolveVolumeLots,
+  resolveExpiryDate,
+  resolveDaysToExpiry,
 } from '../utils/warrantDisplay.js'
 
 const props = defineProps({
@@ -33,6 +35,8 @@ const SORT_LABELS = {
   change_pct: '漲跌幅',
   volume: '張數',
   turnover: '金額',
+  days_to_expiry: '剩餘天數',
+  expiry_date: '到期日',
 }
 
 const sortKey = ref('turnover')
@@ -61,7 +65,13 @@ watch(
 )
 
 function defaultDirForKey(key) {
-  if (key === 'warrant_name' || key === 'underlying' || key === 'warrant_code') return 'asc'
+  if (
+    key === 'warrant_name'
+    || key === 'underlying'
+    || key === 'warrant_code'
+    || key === 'expiry_date'
+    || key === 'days_to_expiry'
+  ) return 'asc'
   return 'desc'
 }
 
@@ -120,6 +130,22 @@ function compareRows(a, b) {
     const ac = String(a.underlying_code || '').localeCompare(String(b.underlying_code || ''), 'zh-Hant')
     if (ac !== 0) return ac * dir
     return String(a.underlying_name || '').localeCompare(String(b.underlying_name || ''), 'zh-Hant') * dir
+  }
+  if (key === 'days_to_expiry') {
+    const da = resolveDaysToExpiry(a)
+    const db = resolveDaysToExpiry(b)
+    if (da == null && db == null) return 0
+    if (da == null) return 1
+    if (db == null) return -1
+    return (da - db) * dir
+  }
+  if (key === 'expiry_date') {
+    const da = resolveExpiryDate(a) || ''
+    const db = resolveExpiryDate(b) || ''
+    if (!da && !db) return 0
+    if (!da) return 1
+    if (!db) return -1
+    return da.localeCompare(db) * dir
   }
   return 0
 }
@@ -188,6 +214,31 @@ function changeToneClass(n) {
   return v > 0 ? 'ch-up' : 'ch-down'
 }
 
+function fmtExpiry(row) {
+  return resolveExpiryDate(row) || '—'
+}
+
+function fmtExpiryShort(row) {
+  const date = fmtExpiry(row)
+  if (!date || date === '—') return '—'
+  const m = String(date).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return date
+  return `${Number(m[2])}/${Number(m[3])}`
+}
+
+function fmtDays(row) {
+  const days = resolveDaysToExpiry(row)
+  return days == null ? '—' : days
+}
+
+function daysClass(row) {
+  const days = resolveDaysToExpiry(row)
+  if (days == null) return ''
+  if (days <= 7) return 'days-urgent'
+  if (days <= 30) return 'days-soon'
+  return ''
+}
+
 const sortableHeaders = [
   { key: 'star', label: '', class: 'star-col' },
   { key: 'rank', label: '#', class: '' },
@@ -199,6 +250,8 @@ const sortableHeaders = [
   { key: 'change_pct', label: '漲跌幅', class: 'num' },
   { key: 'volume', label: '張數', class: 'num' },
   { key: 'turnover', label: '金額', class: 'num' },
+  { key: 'days_to_expiry', label: '剩餘天數', class: 'num' },
+  { key: 'expiry_date', label: '到期日', class: 'center' },
 ]
 </script>
 
@@ -276,6 +329,11 @@ const sortableHeaders = [
               class="num mono"
               :class="{ 'metric-em': metric === 'turnover' && sortKey === 'turnover' }"
             >{{ fmt(row.turnover) }}</td>
+            <td class="num mono" :class="daysClass(row)">{{ fmtDays(row) }}</td>
+            <td class="mono cell-expiry" :title="fmtExpiry(row)">
+              <span class="expiry-full">{{ fmtExpiry(row) }}</span>
+              <span class="expiry-short">{{ fmtExpiryShort(row) }}</span>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -395,5 +453,20 @@ const sortableHeaders = [
 .star-btn.is-on,
 .star-btn:hover {
   color: #e8c98a;
+}
+.sortable-th.center .th-sort {
+  justify-content: center;
+}
+.cell-expiry {
+  text-align: center;
+  white-space: nowrap;
+}
+.expiry-short { display: none; }
+.expiry-full { display: inline; }
+.days-soon { color: #e8c98a; font-weight: 600; }
+.days-urgent { color: #ff6b6b; font-weight: 700; }
+@media (max-width: 767px) {
+  .expiry-full { display: none; }
+  .expiry-short { display: inline; }
 }
 </style>
