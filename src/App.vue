@@ -1074,10 +1074,10 @@ onUnmounted(() => {
   <div class="app" :class="{ 'app--results': engineView === 'screener' && showMasterResults }">
     <PwaInstallPrompt />
     <div class="topbar">
-      <a class="home-link" href="https://www.quantgems.com/" target="_blank" rel="noopener noreferrer">
+      <div class="home-link" aria-label="QuantGems 權證引擎">
         <span class="home-link-brand">QuantGems®</span>
-        <span class="home-link-site">主站</span>
-      </a>
+        <span class="home-link-site">權證引擎</span>
+      </div>
       <div class="auth-box">
         <template v-if="isAuthenticated">
           <span class="auth-user">
@@ -1156,13 +1156,6 @@ onUnmounted(() => {
 
     <template v-if="engineView === 'heat' || (engineView === 'screener' && !showMasterResults)">
     <header class="hero">
-      <div class="page-title">
-        <i class="fas fa-satellite-dish" aria-hidden="true"></i>
-        <h1>權證引擎</h1>
-        <span v-if="stats" class="period-badge">
-          主檔 {{ stats.total_master?.toLocaleString?.() || '—' }}
-        </span>
-      </div>
       <p class="lede">從權證總覽篩選全市場標的，追蹤當日成交熱度，並以全螢幕技術分析檢視單檔走勢。</p>
       <p v-if="stats" class="hero-stats">
         <span class="stat"><span class="label">主檔歷史總數</span><strong>{{ stats.total_master?.toLocaleString?.() }}</strong></span>
@@ -1604,7 +1597,7 @@ onUnmounted(() => {
   gap: 0.35em;
   flex-shrink: 0;
   color: var(--text-muted);
-  font-size: 0.86rem;
+  font-size: 0.92rem;
   text-decoration: none;
   line-height: 1.25;
 }
@@ -1613,11 +1606,14 @@ onUnmounted(() => {
   font-weight: 700;
   letter-spacing: 0.04em;
 }
+.home-link-site {
+  color: #e8c98a;
+  font-weight: 650;
+}
 .home-link-brand,
 .home-link-site {
   white-space: nowrap;
 }
-.home-link:hover { color: #e8c98a; }
 
 .engine-nav {
   margin: -0.35rem -1rem 1rem;
@@ -1810,7 +1806,7 @@ a.btn-auth {
   letter-spacing: 0.06em;
 }
 .lede {
-  margin: 0.85rem 0 0;
+  margin: 0;
   color: var(--text-dim);
   max-width: 38rem;
   font-size: 0.95rem;
