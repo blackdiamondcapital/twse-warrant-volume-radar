@@ -215,6 +215,8 @@ const exportingMaster = ref(false)
 /** Excel 匯出：false=僅個股，true=含加權／台指等指數類 */
 const masterExportIncludeIndex = ref(false)
 const heatSectionOpen = ref(true)
+/** 當日熱度：日期 chip 預設收合，避免大量交易日換行佔滿版面 */
+const heatDatesOpen = ref(false)
 const exportingHeat = ref(false)
 
 const dates = ref([])
@@ -577,7 +579,12 @@ function setHeatMarket(next) {
 
 function setHeatDate(next) {
   selectedDate.value = next
+  heatDatesOpen.value = false
   loadRankings()
+}
+
+function toggleHeatDates() {
+  heatDatesOpen.value = !heatDatesOpen.value
 }
 
 function setMetric(next) {
@@ -1264,17 +1271,35 @@ onUnmounted(() => {
       <div v-show="heatSectionOpen">
         <div class="heat-toolbar panel">
           <div class="heat-rows">
-            <div class="heat-row">
+            <div class="heat-row heat-row--dates" :class="{ 'is-dates-open': heatDatesOpen }">
               <span class="heat-row-label">日期</span>
-              <div class="chip-scroll ranking-period-toggle">
+              <div class="heat-dates-wrap">
                 <button
-                  v-for="d in dates"
-                  :key="d"
                   type="button"
-                  class="chip-btn period-chip"
-                  :class="{ active: selectedDate === d }"
-                  @click="setHeatDate(d)"
-                >{{ d }}</button>
+                  class="heat-dates-toggle"
+                  :aria-expanded="heatDatesOpen"
+                  :aria-label="heatDatesOpen ? '收合日期選單' : '展開日期選單'"
+                  @click="toggleHeatDates"
+                >
+                  <span class="heat-dates-current mono">{{ selectedDate || '—' }}</span>
+                  <span class="chev" aria-hidden="true">
+                    <span class="chev-label">{{ heatDatesOpen ? '收合' : '選擇' }}</span>
+                    <span class="chev-icon">{{ heatDatesOpen ? '▾' : '▸' }}</span>
+                  </span>
+                </button>
+                <div
+                  v-show="heatDatesOpen"
+                  class="chip-scroll heat-date-scroll ranking-period-toggle"
+                >
+                  <button
+                    v-for="d in dates"
+                    :key="d"
+                    type="button"
+                    class="chip-btn period-chip"
+                    :class="{ active: selectedDate === d }"
+                    @click="setHeatDate(d)"
+                  >{{ d }}</button>
+                </div>
               </div>
             </div>
             <div class="heat-row heat-row--controls">
@@ -1792,6 +1817,49 @@ a.btn-auth {
   font-size: 0.8rem;
   min-width: 2rem;
 }
+.heat-dates-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+.heat-dates-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.28rem 0.65rem;
+  border-radius: 12px;
+  border: 1px solid rgba(212, 175, 110, 0.22);
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.42) 0%, rgba(8, 15, 28, 0.88) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 248, 230, 0.08);
+  cursor: pointer;
+  text-align: left;
+}
+.heat-dates-toggle:hover {
+  border-color: rgba(232, 201, 138, 0.45);
+}
+.heat-dates-current {
+  color: #f4e6c4;
+  font-size: 0.84rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.heat-dates-toggle .chev {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.heat-row--dates.is-dates-open {
+  align-items: flex-start;
+}
 .chip-scroll {
   display: flex;
   gap: 0.35rem;
@@ -1800,6 +1868,10 @@ a.btn-auth {
   min-width: 0;
   flex: 1;
   scrollbar-width: thin;
+}
+.chip-scroll.heat-date-scroll.ranking-period-toggle {
+  flex-wrap: nowrap;
+  width: 100%;
 }
 .chip-scroll::-webkit-scrollbar {
   height: 4px;
