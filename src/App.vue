@@ -1101,6 +1101,106 @@ onUnmounted(() => {
       </p>
     </header>
 
+    <section class="heat-section">
+      <div class="heat-head-row panel">
+        <button
+          type="button"
+          class="heat-head toggle"
+          :aria-expanded="heatSectionOpen"
+          :aria-label="heatSectionOpen ? '收合當日熱度' : '展開當日熱度'"
+          @click="toggleHeatSection"
+        >
+          <div class="heat-head-main">
+            <i class="fas fa-fire-alt heat-head-icon" aria-hidden="true"></i>
+            <h2>當日熱度</h2>
+            <span class="muted">{{ heatSummaryLabel }}</span>
+          </div>
+          <span class="chev" aria-hidden="true">
+            <span class="chev-label">{{ heatSectionOpen ? '收合' : '展開' }}</span>
+            <span class="chev-icon">{{ heatSectionOpen ? '▾' : '▸' }}</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          class="export-btn"
+          title="匯出目前熱度排行（最多 100 檔）含完整欄位，可另存至桌面"
+          :disabled="exportingHeat || loadingRankings || !rankings.length"
+          @click.stop="onExportHeat"
+        >
+          {{ exportingHeat ? '匯出中…' : '下載 Excel' }}
+        </button>
+      </div>
+
+      <div v-show="heatSectionOpen">
+        <div class="heat-toolbar panel">
+          <div class="heat-rows">
+            <div class="heat-row heat-row--dates" :class="{ 'is-dates-open': heatDatesOpen }">
+              <span class="heat-row-label">日期</span>
+              <div class="heat-dates-wrap">
+                <button
+                  type="button"
+                  class="heat-dates-toggle"
+                  :aria-expanded="heatDatesOpen"
+                  :aria-label="heatDatesOpen ? '收合日期選單' : '展開日期選單'"
+                  @click="toggleHeatDates"
+                >
+                  <span class="heat-dates-current mono">{{ selectedDate || '—' }}</span>
+                  <span class="chev" aria-hidden="true">
+                    <span class="chev-label">{{ heatDatesOpen ? '收合' : '選擇' }}</span>
+                    <span class="chev-icon">{{ heatDatesOpen ? '▾' : '▸' }}</span>
+                  </span>
+                </button>
+                <div
+                  v-show="heatDatesOpen"
+                  class="chip-scroll heat-date-scroll ranking-period-toggle"
+                >
+                  <button
+                    v-for="d in dates"
+                    :key="d"
+                    type="button"
+                    class="chip-btn period-chip"
+                    :class="{ active: selectedDate === d }"
+                    @click="setHeatDate(d)"
+                  >{{ d }}</button>
+                </div>
+              </div>
+            </div>
+            <div class="heat-row heat-row--controls">
+              <span class="heat-row-label">市場</span>
+              <div class="chip-btns ranking-period-toggle">
+                <button type="button" class="chip-btn period-chip" :class="{ active: heatMarket === 'both' }" @click="setHeatMarket('both')">全市場</button>
+                <button type="button" class="chip-btn period-chip" :class="{ active: heatMarket === 'twse' }" @click="setHeatMarket('twse')">上市</button>
+                <button type="button" class="chip-btn period-chip" :class="{ active: heatMarket === 'tpex' }" @click="setHeatMarket('tpex')">上櫃</button>
+              </div>
+              <span class="heat-row-label">類型</span>
+              <div class="chip-btns ranking-type-toggle">
+                <button type="button" class="chip-btn ranking-type-chip" :class="{ active: heatType === '' }" @click="setHeatType('')">全部</button>
+                <button type="button" class="chip-btn ranking-type-chip" :class="{ active: heatType === '認購' }" @click="setHeatType('認購')">認購</button>
+                <button type="button" class="chip-btn ranking-type-chip" :class="{ active: heatType === '認售' }" @click="setHeatType('認售')">認售</button>
+              </div>
+              <span class="heat-row-label">指標</span>
+              <div class="chip-btns ranking-period-toggle">
+                <button type="button" class="chip-btn period-chip" :class="{ active: metric === 'turnover' }" @click="setMetric('turnover')">成交金額</button>
+                <button type="button" class="chip-btn period-chip" :class="{ active: metric === 'volume' }" @click="setMetric('volume')">成交張數</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <RankingPanel
+          :rows="rankings"
+          :loading="loadingRankings"
+          :selected-code="selected?.warrant_code || ''"
+          :metric="metric"
+          :heat-type="heatType"
+          :api-type="rankingsMeta.type"
+          :error-text="rankingsError"
+          :trade-date="selectedDate"
+          @select="selectWarrant"
+        />
+      </div>
+    </section>
+
     <section class="search-bar panel">
       <div class="search-main">
         <div class="step-head">
@@ -1238,105 +1338,6 @@ onUnmounted(() => {
       />
     </div>
 
-    <section class="heat-section">
-      <div class="heat-head-row panel">
-        <button
-          type="button"
-          class="heat-head toggle"
-          :aria-expanded="heatSectionOpen"
-          :aria-label="heatSectionOpen ? '收合當日熱度' : '展開當日熱度'"
-          @click="toggleHeatSection"
-        >
-          <div class="heat-head-main">
-            <i class="fas fa-fire-alt heat-head-icon" aria-hidden="true"></i>
-            <h2>當日熱度</h2>
-            <span class="muted">{{ heatSummaryLabel }}</span>
-          </div>
-          <span class="chev" aria-hidden="true">
-            <span class="chev-label">{{ heatSectionOpen ? '收合' : '展開' }}</span>
-            <span class="chev-icon">{{ heatSectionOpen ? '▾' : '▸' }}</span>
-          </span>
-        </button>
-        <button
-          type="button"
-          class="export-btn"
-          title="匯出目前熱度排行（最多 100 檔）含完整欄位，可另存至桌面"
-          :disabled="exportingHeat || loadingRankings || !rankings.length"
-          @click.stop="onExportHeat"
-        >
-          {{ exportingHeat ? '匯出中…' : '下載 Excel' }}
-        </button>
-      </div>
-
-      <div v-show="heatSectionOpen">
-        <div class="heat-toolbar panel">
-          <div class="heat-rows">
-            <div class="heat-row heat-row--dates" :class="{ 'is-dates-open': heatDatesOpen }">
-              <span class="heat-row-label">日期</span>
-              <div class="heat-dates-wrap">
-                <button
-                  type="button"
-                  class="heat-dates-toggle"
-                  :aria-expanded="heatDatesOpen"
-                  :aria-label="heatDatesOpen ? '收合日期選單' : '展開日期選單'"
-                  @click="toggleHeatDates"
-                >
-                  <span class="heat-dates-current mono">{{ selectedDate || '—' }}</span>
-                  <span class="chev" aria-hidden="true">
-                    <span class="chev-label">{{ heatDatesOpen ? '收合' : '選擇' }}</span>
-                    <span class="chev-icon">{{ heatDatesOpen ? '▾' : '▸' }}</span>
-                  </span>
-                </button>
-                <div
-                  v-show="heatDatesOpen"
-                  class="chip-scroll heat-date-scroll ranking-period-toggle"
-                >
-                  <button
-                    v-for="d in dates"
-                    :key="d"
-                    type="button"
-                    class="chip-btn period-chip"
-                    :class="{ active: selectedDate === d }"
-                    @click="setHeatDate(d)"
-                  >{{ d }}</button>
-                </div>
-              </div>
-            </div>
-            <div class="heat-row heat-row--controls">
-              <span class="heat-row-label">市場</span>
-              <div class="chip-btns ranking-period-toggle">
-                <button type="button" class="chip-btn period-chip" :class="{ active: heatMarket === 'both' }" @click="setHeatMarket('both')">全市場</button>
-                <button type="button" class="chip-btn period-chip" :class="{ active: heatMarket === 'twse' }" @click="setHeatMarket('twse')">上市</button>
-                <button type="button" class="chip-btn period-chip" :class="{ active: heatMarket === 'tpex' }" @click="setHeatMarket('tpex')">上櫃</button>
-              </div>
-              <span class="heat-row-label">類型</span>
-              <div class="chip-btns ranking-type-toggle">
-                <button type="button" class="chip-btn ranking-type-chip" :class="{ active: heatType === '' }" @click="setHeatType('')">全部</button>
-                <button type="button" class="chip-btn ranking-type-chip" :class="{ active: heatType === '認購' }" @click="setHeatType('認購')">認購</button>
-                <button type="button" class="chip-btn ranking-type-chip" :class="{ active: heatType === '認售' }" @click="setHeatType('認售')">認售</button>
-              </div>
-              <span class="heat-row-label">指標</span>
-              <div class="chip-btns ranking-period-toggle">
-                <button type="button" class="chip-btn period-chip" :class="{ active: metric === 'turnover' }" @click="setMetric('turnover')">成交金額</button>
-                <button type="button" class="chip-btn period-chip" :class="{ active: metric === 'volume' }" @click="setMetric('volume')">成交張數</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <RankingPanel
-          :rows="rankings"
-          :loading="loadingRankings"
-          :selected-code="selected?.warrant_code || ''"
-          :metric="metric"
-          :heat-type="heatType"
-          :api-type="rankingsMeta.type"
-          :error-text="rankingsError"
-          :trade-date="selectedDate"
-          @select="selectWarrant"
-        />
-      </div>
-    </section>
     </template>
 
     <template v-else>
