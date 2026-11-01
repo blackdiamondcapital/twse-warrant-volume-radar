@@ -401,6 +401,15 @@ const stockTitle = computed(() => {
   return code
 })
 
+const stockTitleCode = computed(() => baseSymbolForTitle.value)
+
+const stockTitleName = computed(() => {
+  const code = baseSymbolForTitle.value
+  const name = normalizeStockName(displayName.value)
+  if (name && name !== code) return name
+  return ''
+})
+
 const canNavigateCarousel = computed(() => props.carouselLength > 1)
 const carouselIndicator = computed(() => {
   if (!props.carouselLength) return '輪播 0 / 0'
@@ -8137,7 +8146,7 @@ function renderChart() {
     topMain = topPadPx + mobileMaLegendBandPx + mobileDockBandPx + mobileBbLegendGapPx + bbLegendBandPx
   } else {
     // 無布林（或非手機堆疊）：維持原先均線／topMain 計算
-    topPadPx = mtCompact ? 32 : 58
+    topPadPx = mtCompact ? 32 : (isFullscreen.value ? 82 : 58)
     topMain = topPadPx + (mtCompact ? mtMaLegendBandPx : mobileMaLegendBandPx) + bbLegendBandPx
     mobileMaLegendGraphicTopPx = swapMobileMaLegendAndPinnedTip
       ? Math.max(
@@ -12940,7 +12949,9 @@ onUnmounted(() => {
       >
         <div class="legend-title-text">
           <i class="fas fa-chart-candlestick"></i>
-          <span>{{ stockTitle }}</span>
+          <span class="legend-title-text__label">
+            <span class="legend-title-text__symbol">{{ stockTitleCode }}</span><span v-if="stockTitleName" class="legend-title-text__name">{{ stockTitleName }}</span>
+          </span>
           <button
             type="button"
             class="legend-toggle-btn legend-toggle-btn--title-side"
@@ -12961,7 +12972,9 @@ onUnmounted(() => {
           :class="{ 'legend-title-text--fullscreen-inline': liftMobileStockTitleAboveMa }"
         >
           <i class="fas fa-chart-candlestick"></i>
-          <span>{{ stockTitle }}</span>
+          <span class="legend-title-text__label">
+            <span class="legend-title-text__symbol">{{ stockTitleCode }}</span><span v-if="stockTitleName" class="legend-title-text__name">{{ stockTitleName }}</span>
+          </span>
           <button
             type="button"
             class="legend-toggle-btn legend-toggle-btn--title-side legend-toggle-btn--fs-inline"
@@ -15744,7 +15757,7 @@ onUnmounted(() => {
 .legend-overlay-row--name {
   left: 55%;
   transform: translateX(-50%);
-  top: -40px;
+  top: -52px;
 }
 
 .legend-overlay-row.legend-overlay-row--mobile-pinned-inline {
@@ -15764,10 +15777,10 @@ onUnmounted(() => {
 }
 
 .legend-overlay-row.fullscreen-active.legend-overlay-row--mobile-pinned-inline {
-  top: -8px;
-  padding: 6px 12px 2px 8px;
+  top: 0;
+  padding: 2px 12px 12px 8px;
   justify-content: flex-end;
-  min-height: 32px;
+  min-height: 36px;
 }
 
 .legend-overlay-row--mobile-pinned-inline .legend-title-text {
@@ -16052,6 +16065,29 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
+.legend-title-text__label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45em;
+  min-width: 0;
+}
+
+.legend-title-text__symbol {
+  flex: 0 0 auto;
+  font-size: 1.02em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.legend-title-text__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 1.02em;
+  font-weight: 600;
+}
+
 .legend-title-text i {
   display: none;
 }
@@ -16071,7 +16107,7 @@ onUnmounted(() => {
   font-size: 1.25rem;
   position: absolute;
   left: 50%;
-  top: -4px;
+  top: 2px;
   transform: translateX(-50%);
 }
 
@@ -16079,7 +16115,7 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   top: 0;
-  padding: 0 12px;
+  padding: 2px 12px 12px;
   justify-content: center;
   box-sizing: border-box;
   width: 100%;
@@ -17968,15 +18004,16 @@ onUnmounted(() => {
 @media (max-width: 640px) {
   /* 股票代號上移，避免與貼頂的均線圖例重疊 */
   .legend-overlay-row--name {
-    top: -44px;
+    top: -56px;
   }
 
   .legend-overlay-row.legend-overlay-row--mobile-pinned-inline {
-    top: -44px;
+    top: -52px;
   }
 
   .legend-overlay-row.fullscreen-active.legend-overlay-row--mobile-pinned-inline {
-    top: -10px;
+    top: 0;
+    padding-bottom: 12px;
   }
 
   .chart-header {
