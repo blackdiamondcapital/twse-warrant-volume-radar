@@ -100,11 +100,33 @@ function sortNum(v) {
   return Number.isFinite(n) ? n : null
 }
 
+function rowChangePctForSort(row) {
+  const fromApi = sortNum(row?.change_pct)
+  if (fromApi != null) return fromApi
+  const chg = sortNum(row?.price_change)
+  const close = sortNum(row?.close_price)
+  if (chg == null || close == null) return null
+  const ref = close - chg
+  if (!ref) return null
+  return (chg / ref) * 100
+}
+
 function applyMasterSort(rows) {
   if (!rows?.length) return rows
   const dir = filters.sortDir === 'desc' ? -1 : 1
   const key = filters.sort
   return [...rows].sort((a, b) => {
+    if (key === 'code') {
+      return String(a.warrant_code || '').localeCompare(String(b.warrant_code || '')) * dir
+    }
+    if (key === 'name') {
+      return String(a.warrant_name || '').localeCompare(String(b.warrant_name || '')) * dir
+    }
+    if (key === 'underlying') {
+      const ua = String(a.underlying_code || a.underlying_name || '')
+      const ub = String(b.underlying_code || b.underlying_name || '')
+      return ua.localeCompare(ub) * dir
+    }
     if (key === 'volume') {
       return ((sortNum(a.volume) ?? -1) - (sortNum(b.volume) ?? -1)) * dir
     }
@@ -114,6 +136,12 @@ function applyMasterSort(rows) {
     if (key === 'close') {
       return ((sortNum(a.close_price) ?? -1) - (sortNum(b.close_price) ?? -1)) * dir
     }
+    if (key === 'price_change' || key === 'change') {
+      return ((sortNum(a.price_change) ?? -1e18) - (sortNum(b.price_change) ?? -1e18)) * dir
+    }
+    if (key === 'change_pct') {
+      return ((rowChangePctForSort(a) ?? -1e18) - (rowChangePctForSort(b) ?? -1e18)) * dir
+    }
     if (key === 'exercise') {
       return ((sortNum(a.latest_exercise_price) ?? -1) - (sortNum(b.latest_exercise_price) ?? -1)) * dir
     }
@@ -121,11 +149,18 @@ function applyMasterSort(rows) {
   })
 }
 
+function defaultMasterSortDir(key) {
+  if (key === 'code' || key === 'name' || key === 'underlying' || key === 'expiry') return 'asc'
+  return 'desc'
+}
+
 function setMasterSort(key) {
-  if (filters.sort === key) {
+  const normalized = key === 'change' ? 'price_change' : key
+  if (filters.sort === normalized) {
     filters.sortDir = filters.sortDir === 'asc' ? 'desc' : 'asc'
   } else {
-    filters.sort = key
+    filters.sort = normalized
+    filters.sortDir = defaultMasterSortDir(normalized)
   }
   filters.page = 1
   if (clientFilterActive.value) {
@@ -136,7 +171,7 @@ function setMasterSort(key) {
     void syncMasterCarouselRows()
     return
   }
-  if (showMasterResults.value) loadMaster()
+  loadMaster()
 }
 
 function sortDirLabel() {
@@ -1187,8 +1222,11 @@ onUnmounted(() => {
         :exporting="exportingMaster"
         :export-include-index="masterExportIncludeIndex"
         :selected-code="selected?.warrant_code || ''"
+        :sort="filters.sort"
+        :sort-dir="filters.sortDir"
         :open="masterScreenerOpen"
         @select="selectMasterWarrant"
+        @sort="setMasterSort"
         @page="onPage"
         @toggle="toggleMasterScreener"
         @export="onExportMaster"
@@ -1352,8 +1390,11 @@ onUnmounted(() => {
           :exporting="exportingMaster"
           :export-include-index="masterExportIncludeIndex"
           :selected-code="selected?.warrant_code || ''"
+          :sort="filters.sort"
+          :sort-dir="filters.sortDir"
           :open="true"
           @select="selectMasterWarrant"
+          @sort="setMasterSort"
           @page="onPage"
           @export="onExportMaster"
           @update:export-include-index="masterExportIncludeIndex = $event"

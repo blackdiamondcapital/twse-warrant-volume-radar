@@ -16,9 +16,11 @@ const props = defineProps({
   resultsMode: { type: Boolean, default: false },
   /** Excel 匯出是否含指數類權證 */
   exportIncludeIndex: { type: Boolean, default: false },
+  sort: { type: String, default: 'expiry' },
+  sortDir: { type: String, default: 'asc' },
 })
 
-const emit = defineEmits(['select', 'page', 'toggle', 'export', 'update:exportIncludeIndex'])
+const emit = defineEmits(['select', 'page', 'toggle', 'export', 'update:exportIncludeIndex', 'sort'])
 
 const displayTotal = computed(() => {
   if (props.total > 0) return props.total
@@ -36,17 +38,37 @@ const countLabel = computed(() => {
 const panelOpen = computed(() => props.resultsMode || props.open)
 
 const columns = computed(() => [
-  { key: 'code', label: '代號' },
-  { key: 'name', label: '名稱' },
-  { key: 'underlying', label: '標的' },
-  { key: 'close', label: '收盤', align: 'num' },
-  { key: 'price_change', label: '漲跌', align: 'num' },
-  { key: 'change_pct', label: '漲跌幅', align: 'num' },
-  { key: 'volume', label: '成交量', align: 'num' },
-  { key: 'exercise', label: '履約價', align: 'num' },
-  { key: 'days', label: '剩餘天數', headerLines: ['剩餘', '天數'], align: 'num' },
-  { key: 'expiry', label: '到期日', align: 'center' },
+  { key: 'code', label: '代號', sortKey: 'code' },
+  { key: 'name', label: '名稱', sortKey: 'name' },
+  { key: 'underlying', label: '標的', sortKey: 'underlying' },
+  { key: 'close', label: '收盤', align: 'num', sortKey: 'close' },
+  { key: 'price_change', label: '漲跌', align: 'num', sortKey: 'price_change' },
+  { key: 'change_pct', label: '漲跌幅', align: 'num', sortKey: 'change_pct' },
+  { key: 'volume', label: '成交量', align: 'num', sortKey: 'volume' },
+  { key: 'exercise', label: '履約價', align: 'num', sortKey: 'exercise' },
+  { key: 'days', label: '剩餘天數', headerLines: ['剩餘', '天數'], align: 'num', sortKey: 'days' },
+  { key: 'expiry', label: '到期日', align: 'center', sortKey: 'expiry' },
 ])
+
+function activeSortKey() {
+  return props.sort === 'change' ? 'price_change' : props.sort
+}
+
+function sortClass(col) {
+  if (!col.sortKey) return ''
+  return activeSortKey() === col.sortKey ? 'is-active' : ''
+}
+
+function sortIcon(col) {
+  if (!col.sortKey) return '↕'
+  if (activeSortKey() !== col.sortKey) return '↕'
+  return props.sortDir === 'asc' ? '↑' : '↓'
+}
+
+function onSortColumn(col) {
+  if (!col.sortKey) return
+  emit('sort', col.sortKey)
+}
 
 const pageCount = computed(() => Math.max(1, Math.ceil((props.total || 0) / props.pageSize)))
 
@@ -222,12 +244,28 @@ function changeToneClass(n) {
                   `col-head-${col.key}`,
                   col.key === 'expiry' ? 'cell-expiry' : '',
                   col.key === 'days' ? 'cell-days' : '',
+                  { 'sortable-th': Boolean(col.sortKey) },
                 ]"
               >
-                <span v-if="col.headerLines" class="col-label-stacked">
-                  <span v-for="(line, i) in col.headerLines" :key="i">{{ line }}</span>
-                </span>
-                <span v-else class="col-label-single">{{ col.label }}</span>
+                <button
+                  v-if="col.sortKey"
+                  type="button"
+                  class="th-sort"
+                  :class="[col.align, sortClass(col)]"
+                  @click.stop="onSortColumn(col)"
+                >
+                  <span v-if="col.headerLines" class="col-label-stacked">
+                    <span v-for="(line, i) in col.headerLines" :key="i">{{ line }}</span>
+                  </span>
+                  <span v-else class="col-label-single">{{ col.label }}</span>
+                  <span class="th-sort-icon" aria-hidden="true">{{ sortIcon(col) }}</span>
+                </button>
+                <template v-else>
+                  <span v-if="col.headerLines" class="col-label-stacked">
+                    <span v-for="(line, i) in col.headerLines" :key="i">{{ line }}</span>
+                  </span>
+                  <span v-else class="col-label-single">{{ col.label }}</span>
+                </template>
               </th>
             </tr>
           </thead>
@@ -306,6 +344,44 @@ function changeToneClass(n) {
 .ch-down {
   color: #4ade80;
   font-weight: 650;
+}
+.sortable-th {
+  padding: 0;
+  vertical-align: middle;
+}
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.55rem 0.45rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  line-height: 1.15;
+}
+.sortable-th.num .th-sort {
+  justify-content: flex-end;
+}
+.th-sort:hover {
+  color: #e0f2fe;
+}
+.th-sort.is-active {
+  color: var(--cyan-bright, #38bdf8);
+}
+.th-sort-icon {
+  font-size: 0.68rem;
+  opacity: 0.45;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.th-sort.is-active .th-sort-icon {
+  opacity: 1;
 }
 .master-table .col-days { width: 3.6rem; }
 .master-table .col-expiry { width: 6.2rem; }
