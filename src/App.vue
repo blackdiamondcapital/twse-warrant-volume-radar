@@ -6,6 +6,7 @@ import {
   fetchMasterDetail,
   fetchDates,
   fetchRankings,
+  fetchTimeseries,
   fetchTaScreen,
   importLatestWarrants,
 } from './api'
@@ -22,7 +23,7 @@ import { excelDownloadStatus } from './utils/downloadExcel.js'
 import { buildMasterSearchParams } from './utils/masterSearchParams.js'
 import { filterMasterRowsByQuery, isCodeLikeMasterQuery, buildStockCodeLookupFilters } from './utils/masterSearchMatch.js'
 import { filterMasterRowsClient, TA_FULL_MARKET_SCAN_CAP, TA_SCOPED_SCAN_CAP, TA_BACKEND_CLIENT_CAP } from './utils/taScreenFilter.js'
-import { isUnexpiredWarrant } from './utils/warrantDisplay.js'
+import { isUnexpiredWarrant, computeChangeFromBars } from './utils/warrantDisplay.js'
 import { hasActiveTaFilters, hasBackendTaFilters, hasClientOnlyTaFilters, pickClientOnlyTaFilters } from './lib/taScreenRules.js'
 import { getCarouselLimitForUser } from './utils/planAccess.js'
 
@@ -546,6 +547,71 @@ function setMetric(next) {
   loadRankings()
 }
 
+function rankingHasChange(row) {
+  return row?.price_change != null || row?.change_pct != null
+}
+
+function shiftIsoDate(iso, days) {
+  const raw = String(iso || '').slice(0, 10)
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return ''
+  const dt = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+  dt.setUTCDate(dt.getUTCDate() + days)
+  const y = dt.getUTCFullYear()
+  const mo = String(dt.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(dt.getUTCDate()).padStart(2, '0')
+  return `${y}-${mo}-${d}`
+}
+
+async function mapPool(items, limit, fn) {
+  if (!items.length) return
+  let cursor = 0
+  async function worker() {
+    while (cursor < items.length) {
+      const idx = cursor++
+      await fn(items[idx], idx)
+    }
+  }
+  const n = Math.min(Math.max(1, limit), items.length)
+  await Promise.all(Array.from({ length: n }, () => worker()))
+}
+
+async function enrichRankingPriceChange(rows, tradeDate, reqId) {
+  const need = (rows || []).filter((row) => {
+    if (!row?.warrant_code) return false
+    if (!rankingHasChange(row)) return true
+    const chg = Number(row.price_change)
+    const pct = Number(row.change_pct)
+    return (row.price_change == null || chg === 0) && (row.change_pct == null || pct === 0)
+  })
+  if (!need.length) return
+  const end = String(tradeDate || '').slice(0, 10)
+  const start = shiftIsoDate(end, -21)
+  await mapPool(need, 8, async (row) => {
+    if (reqId !== rankingsReqId) return
+    try {
+      const data = await fetchTimeseries({
+        code: row.warrant_code,
+        start: start || undefined,
+        end: end || undefined,
+        limitDays: 12,
+      })
+      const next = computeChangeFromBars(data?.data || data?.rows || [], end)
+      if (next.price_change == null && next.change_pct == null) return
+      if (reqId !== rankingsReqId) return
+      const idx = rankings.value.findIndex(
+        (item) => item.warrant_code === row.warrant_code && item.market === row.market,
+      )
+      if (idx < 0) return
+      const current = rankings.value[idx]
+      if (rankingHasChange(current)) return
+      rankings.value[idx] = { ...current, ...next }
+    } catch {
+      /* 單檔失敗不擋整表 */
+    }
+  })
+}
+
 async function loadRankings() {
   const reqId = ++rankingsReqId
   const expectedKind = heatTypeToKind(heatType.value)
@@ -577,6 +643,16 @@ async function loadRankings() {
       rankingsError.value = expectedType
         ? `沒有「${expectedType}」成交熱度（${data.date || selectedDate.value || '—'}）`
         : `沒有成交資料（日期 ${data.date || selectedDate.value || '—'}）`
+    } else {
+      const missingChange = rows.some((row) => !rankingHasChange(row))
+      const allFlatZero = rows.every((row) => {
+        const chg = Number(row.price_change)
+        const pct = Number(row.change_pct)
+        return (row.price_change == null || chg === 0) && (row.change_pct == null || pct === 0)
+      })
+      if (missingChange || allFlatZero) {
+        void enrichRankingPriceChange(rows, data.date || selectedDate.value, reqId)
+      }
     }
   } catch (err) {
     if (reqId !== rankingsReqId) return

@@ -132,6 +132,26 @@ export function resolveVolumeChartShares(volume, close, turnover) {
   return lots * SHARES_PER_LOT
 }
 
+export function computeChangeFromBars(bars, asOf) {
+  const asOfDate = String(asOf || '').slice(0, 10)
+  const closes = (Array.isArray(bars) ? bars : [])
+    .map((bar) => ({
+      date: String(bar?.trade_date || bar?.time || bar?.date || '').slice(0, 10),
+      close: toFiniteNum(bar?.close_price ?? bar?.close),
+    }))
+    .filter((bar) => bar.date && bar.close != null && (!asOfDate || bar.date <= asOfDate))
+    .sort((a, b) => a.date.localeCompare(b.date))
+  if (closes.length < 2) return { price_change: null, change_pct: null }
+  const last = closes[closes.length - 1]
+  const prev = closes[closes.length - 2]
+  if (!prev.close) return { price_change: null, change_pct: null }
+  const price_change = last.close - prev.close
+  return {
+    price_change,
+    change_pct: (price_change / prev.close) * 100,
+  }
+}
+
 export function formatVolumeLots(volume, close, turnover, digits = 0) {
   const lots = resolveVolumeLots(volume, close, turnover)
   if (lots == null) return '—'
