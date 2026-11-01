@@ -177,6 +177,7 @@ function changeToneClass(n) {
         @click="emit('toggle')"
       >
         <div class="head-main">
+          <i class="fas fa-filter head-icon" aria-hidden="true"></i>
           <h2>權證總覽</h2>
           <span class="muted">{{ countLabel }}</span>
         </div>
@@ -369,10 +370,10 @@ function changeToneClass(n) {
   justify-content: flex-end;
 }
 .th-sort:hover {
-  color: #e0f2fe;
+  color: #f7edd4;
 }
 .th-sort.is-active {
-  color: var(--cyan-bright, #38bdf8);
+  color: #e8c98a;
 }
 .th-sort-icon {
   font-size: 0.68rem;
@@ -466,9 +467,9 @@ function changeToneClass(n) {
   cursor: pointer;
 }
 .export-scope-chips button.active {
-  color: var(--cyan-bright);
-  border-color: rgba(0, 212, 255, 0.45);
-  background: rgba(0, 212, 255, 0.1);
+  color: #1a140c;
+  border-color: rgba(232, 201, 138, 0.9);
+  background: linear-gradient(180deg, #e8c98a, #b08a4a);
 }
 .head {
   display: flex;
@@ -486,10 +487,12 @@ function changeToneClass(n) {
 }
 .export-btn {
   flex-shrink: 0;
-  border: 1px solid rgba(0, 212, 255, 0.35);
-  background: rgba(0, 212, 255, 0.08);
-  color: var(--cyan-bright);
-  border-radius: 8px;
+  border: 1.5px solid rgba(212, 175, 110, 0.45);
+  background:
+    radial-gradient(circle at top left, rgba(212, 175, 110, 0.22), transparent 60%),
+    linear-gradient(135deg, rgba(18, 27, 44, 0.95), rgba(8, 12, 22, 0.9));
+  color: #f4e6c4;
+  border-radius: 999px;
   padding: 0.38rem 0.75rem;
   font-size: 0.8rem;
   font-weight: 600;
@@ -498,20 +501,19 @@ function changeToneClass(n) {
   transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
 }
 .export-btn--ready {
-  border-color: rgba(0, 212, 255, 0.55);
-  background: rgba(0, 212, 255, 0.14);
-  box-shadow: 0 0 12px rgba(0, 212, 255, 0.18);
+  border-color: rgba(232, 201, 138, 0.75);
+  box-shadow: 0 0 14px rgba(212, 175, 110, 0.22);
 }
 .export-btn:hover:not(:disabled) {
-  border-color: rgba(0, 212, 255, 0.55);
-  background: rgba(0, 212, 255, 0.14);
+  border-color: rgba(232, 201, 138, 0.85);
+  box-shadow: 0 0 18px rgba(212, 175, 110, 0.28);
 }
 .export-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 .head.toggle:hover h2 {
-  color: var(--cyan-bright);
+  color: #f7edd4;
 }
 .head-static {
   display: flex;
@@ -526,14 +528,21 @@ function changeToneClass(n) {
 }
 .head-main {
   display: flex;
-  align-items: baseline;
-  gap: 0.65rem;
+  align-items: center;
+  gap: 0.55rem;
   min-width: 0;
+}
+.head-icon {
+  color: #e8c98a;
+  filter: drop-shadow(0 0 8px rgba(212, 175, 110, 0.4));
+  font-size: 1.02rem;
 }
 .head h2 {
   margin: 0;
   font-size: 1.05rem;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #f4e6c4;
 }
 .chev {
   display: inline-flex;
@@ -563,7 +572,7 @@ function changeToneClass(n) {
   gap: 0.85rem;
   margin-top: 0.85rem;
 }
-.days-soon { color: #38bdf8; font-weight: 600; }
+.days-soon { color: #e8c98a; font-weight: 600; }
 .days-urgent { color: #ff6b6b; font-weight: 700; }
 .underlying {
   display: flex;
@@ -584,10 +593,10 @@ function changeToneClass(n) {
   cursor: pointer;
 }
 .screener table.data tbody tr:hover {
-  background: rgba(0, 212, 255, 0.04);
+  background: rgba(212, 175, 110, 0.06);
 }
 .screener table.data tbody tr.selected {
-  background: rgba(0, 212, 255, 0.08);
+  background: rgba(212, 175, 110, 0.10);
 }
 @media (max-width: 640px) {
   .screener {

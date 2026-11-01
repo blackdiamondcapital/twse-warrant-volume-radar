@@ -302,7 +302,7 @@ const sortableHeaders = [
 }
 .table-wrap { max-height: min(48vh, 480px); }
 .metric-em {
-  color: var(--cyan-bright, #38bdf8);
+  color: #e8c98a;
   font-weight: 650;
 }
 .ch-up {
@@ -337,10 +337,10 @@ const sortableHeaders = [
   justify-content: flex-end;
 }
 .th-sort:hover {
-  color: #e0f2fe;
+  color: #f7edd4;
 }
 .th-sort.is-active {
-  color: var(--cyan-bright, #38bdf8);
+  color: #e8c98a;
 }
 .th-sort-icon {
   font-size: 0.72rem;

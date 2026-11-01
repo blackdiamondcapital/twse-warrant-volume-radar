@@ -1075,53 +1075,49 @@ onUnmounted(() => {
 
     <template v-if="!showMasterResults">
     <header class="hero">
-      <div class="hero-copy">
-        <div class="brand-row">
-          <div class="brand-mark-wrap" aria-hidden="true">
-            <span class="brand-mark-ring"></span>
-            <span class="brand-mark-pulse"></span>
-            <img class="brand-mark" src="/favicon.svg" alt="" width="52" height="52" />
-          </div>
-          <div class="brand-text">
-            <div class="brand-title-row">
-              <span class="brand-name">QuantGems<sup class="tm-mark">®</sup></span>
-              <h1>權證引擎</h1>
-            </div>
-            <span class="brand-accent" aria-hidden="true"></span>
-          </div>
-        </div>
-        <p class="lede">從權證總覽篩選全市場標的，追蹤當日成交熱度，並以全螢幕技術分析檢視單檔走勢。</p>
-        <p v-if="stats" class="hero-stats">
-          <span class="stat"><span class="label">主檔歷史總數</span><strong>{{ stats.total_master?.toLocaleString?.() }}</strong></span>
-          <span class="stat-sep" aria-hidden="true">·</span>
-          <span class="stat"><span class="label">上市</span><strong>{{ stats.twse?.master_total?.toLocaleString?.() }}</strong></span>
-          <span class="stat-sep" aria-hidden="true">·</span>
-          <span class="stat"><span class="label">上櫃</span><strong>{{ stats.tpex?.master_total?.toLocaleString?.() }}</strong></span>
-          <span class="stat-sep" aria-hidden="true">·</span>
-          <span class="stat"><span class="label">最新成交日</span><strong>{{ latestTradeDate }}</strong></span>
-        </p>
+      <div class="page-title">
+        <i class="fas fa-satellite-dish" aria-hidden="true"></i>
+        <h1>權證引擎</h1>
+        <span v-if="stats" class="period-badge">
+          主檔 {{ stats.total_master?.toLocaleString?.() || '—' }}
+        </span>
       </div>
+      <p class="lede">從權證總覽篩選全市場標的，追蹤當日成交熱度，並以全螢幕技術分析檢視單檔走勢。</p>
+      <p v-if="stats" class="hero-stats">
+        <span class="stat"><span class="label">主檔歷史總數</span><strong>{{ stats.total_master?.toLocaleString?.() }}</strong></span>
+        <span class="stat-sep" aria-hidden="true">·</span>
+        <span class="stat"><span class="label">上市</span><strong>{{ stats.twse?.master_total?.toLocaleString?.() }}</strong></span>
+        <span class="stat-sep" aria-hidden="true">·</span>
+        <span class="stat"><span class="label">上櫃</span><strong>{{ stats.tpex?.master_total?.toLocaleString?.() }}</strong></span>
+        <span class="stat-sep" aria-hidden="true">·</span>
+        <span class="stat"><span class="label">最新成交日</span><strong>{{ latestTradeDate }}</strong></span>
+      </p>
     </header>
 
     <section class="search-bar panel">
       <div class="search-main">
-        <label>搜尋標的／股票代號／權證代號／名稱</label>
+        <div class="step-head">
+          <span class="step-num">01</span>
+          <h3>搜尋標的</h3>
+        </div>
+        <label>股票代號／權證代號／名稱</label>
         <input
           v-model="filters.q"
           placeholder="標的 4 碼：2330、5274｜權證：703349、03002T｜名稱：金像電"
           @keyup.enter="onSearch"
         />
-        <div class="type-toggle">
+        <div class="type-toggle ranking-type-toggle">
           <div class="btns">
-            <button type="button" :class="{ active: filters.type === '' }" @click="setMasterType('')">全部</button>
-            <button type="button" :class="{ active: filters.type === '認購' }" @click="setMasterType('認購')">認購</button>
-            <button type="button" :class="{ active: filters.type === '認售' }" @click="setMasterType('認售')">認售</button>
+            <button type="button" class="ranking-type-chip" :class="{ active: filters.type === '' }" @click="setMasterType('')">全部</button>
+            <button type="button" class="ranking-type-chip" :class="{ active: filters.type === '認購' }" @click="setMasterType('認購')">認購</button>
+            <button type="button" class="ranking-type-chip" :class="{ active: filters.type === '認售' }" @click="setMasterType('認售')">認售</button>
           </div>
         </div>
       </div>
 
       <div class="fund-block">
-        <div class="fund-head">
+        <div class="fund-head step-head">
+          <span class="step-num">02</span>
           <h3>基本面</h3>
         </div>
         <div class="fund-grid">
@@ -1159,12 +1155,13 @@ onUnmounted(() => {
       </div>
 
       <div class="fund-block ta-block">
-        <div class="fund-head ta-head">
+        <div class="fund-head ta-head step-head">
+          <span class="step-num">03</span>
+          <h3>技術面</h3>
           <span class="ta-period-badge">日線</span>
-          <h3>技術分析</h3>
         </div>
         <p class="ta-hint muted">未填標的時掃成交量前 600 檔。剛站上多空線：Hull 週期 45；神奇K／5均&gt;10均由後端篩選。</p>
-        <div class="ta-chip-row">
+        <div class="ta-chip-row ranking-period-toggle">
           <button
             type="button"
             class="chip-btn"
@@ -1244,6 +1241,7 @@ onUnmounted(() => {
           @click="toggleHeatSection"
         >
           <div class="heat-head-main">
+            <i class="fas fa-fire-alt heat-head-icon" aria-hidden="true"></i>
             <h2>當日熱度</h2>
             <span class="muted">{{ heatSummaryLabel }}</span>
           </div>
@@ -1268,12 +1266,12 @@ onUnmounted(() => {
           <div class="heat-rows">
             <div class="heat-row">
               <span class="heat-row-label">日期</span>
-              <div class="chip-scroll">
+              <div class="chip-scroll ranking-period-toggle">
                 <button
                   v-for="d in dates"
                   :key="d"
                   type="button"
-                  class="chip-btn"
+                  class="chip-btn period-chip"
                   :class="{ active: selectedDate === d }"
                   @click="setHeatDate(d)"
                 >{{ d }}</button>
@@ -1281,21 +1279,21 @@ onUnmounted(() => {
             </div>
             <div class="heat-row heat-row--controls">
               <span class="heat-row-label">市場</span>
-              <div class="chip-btns">
-                <button type="button" class="chip-btn" :class="{ active: heatMarket === 'both' }" @click="setHeatMarket('both')">全市場</button>
-                <button type="button" class="chip-btn" :class="{ active: heatMarket === 'twse' }" @click="setHeatMarket('twse')">上市</button>
-                <button type="button" class="chip-btn" :class="{ active: heatMarket === 'tpex' }" @click="setHeatMarket('tpex')">上櫃</button>
+              <div class="chip-btns ranking-period-toggle">
+                <button type="button" class="chip-btn period-chip" :class="{ active: heatMarket === 'both' }" @click="setHeatMarket('both')">全市場</button>
+                <button type="button" class="chip-btn period-chip" :class="{ active: heatMarket === 'twse' }" @click="setHeatMarket('twse')">上市</button>
+                <button type="button" class="chip-btn period-chip" :class="{ active: heatMarket === 'tpex' }" @click="setHeatMarket('tpex')">上櫃</button>
               </div>
               <span class="heat-row-label">類型</span>
-              <div class="chip-btns">
-                <button type="button" class="chip-btn" :class="{ active: heatType === '' }" @click="setHeatType('')">全部</button>
-                <button type="button" class="chip-btn" :class="{ active: heatType === '認購' }" @click="setHeatType('認購')">認購</button>
-                <button type="button" class="chip-btn" :class="{ active: heatType === '認售' }" @click="setHeatType('認售')">認售</button>
+              <div class="chip-btns ranking-type-toggle">
+                <button type="button" class="chip-btn ranking-type-chip" :class="{ active: heatType === '' }" @click="setHeatType('')">全部</button>
+                <button type="button" class="chip-btn ranking-type-chip" :class="{ active: heatType === '認購' }" @click="setHeatType('認購')">認購</button>
+                <button type="button" class="chip-btn ranking-type-chip" :class="{ active: heatType === '認售' }" @click="setHeatType('認售')">認售</button>
               </div>
               <span class="heat-row-label">指標</span>
-              <div class="chip-btns">
-                <button type="button" class="chip-btn" :class="{ active: metric === 'turnover' }" @click="setMetric('turnover')">成交金額</button>
-                <button type="button" class="chip-btn" :class="{ active: metric === 'volume' }" @click="setMetric('volume')">成交張數</button>
+              <div class="chip-btns ranking-period-toggle">
+                <button type="button" class="chip-btn period-chip" :class="{ active: metric === 'turnover' }" @click="setMetric('turnover')">成交金額</button>
+                <button type="button" class="chip-btn period-chip" :class="{ active: metric === 'volume' }" @click="setMetric('volume')">成交張數</button>
               </div>
             </div>
           </div>
@@ -1355,7 +1353,7 @@ onUnmounted(() => {
             <button type="button" class="primary results-search-btn" :disabled="loadingMaster" @click="onSearch">
               {{ loadingMaster ? '…' : '搜尋' }}
             </button>
-            <div class="results-type-chips">
+            <div class="results-type-chips ranking-type-toggle">
               <button type="button" :class="{ active: filters.type === '' }" @click="setMasterTypeAndSearch('')">全部</button>
               <button type="button" :class="{ active: filters.type === '認購' }" @click="setMasterTypeAndSearch('認購')">認購</button>
               <button type="button" :class="{ active: filters.type === '認售' }" @click="setMasterTypeAndSearch('認售')">認售</button>
@@ -1363,7 +1361,7 @@ onUnmounted(() => {
           </div>
           <div v-if="masterTotal > 0" class="results-toolbar-row results-toolbar-row--sort">
             <span class="results-sort-label">排序</span>
-            <div class="results-sort-chips">
+            <div class="results-sort-chips ranking-period-toggle">
               <button
                 v-for="opt in MASTER_SORT_OPTIONS"
                 :key="opt.key"
@@ -1457,7 +1455,7 @@ onUnmounted(() => {
 .app {
   width: min(1280px, calc(100% - 2rem));
   margin: 0 auto;
-  padding: 0.75rem 0 3rem;
+  padding: 0 0 3rem;
 }
 
 .topbar {
@@ -1465,8 +1463,15 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 0.85rem;
+  margin: 0 -1rem 0.95rem;
+  padding: 0.65rem 1rem;
   min-width: 0;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: linear-gradient(180deg, rgba(6, 12, 22, 0.96) 0%, rgba(8, 12, 24, 0.92) 100%);
+  border-bottom: 1px solid rgba(212, 175, 110, 0.16);
+  backdrop-filter: blur(16px);
 }
 .home-link {
   display: inline-flex;
@@ -1479,11 +1484,16 @@ onUnmounted(() => {
   text-decoration: none;
   line-height: 1.25;
 }
+.home-link-brand {
+  color: #f4e6c4;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
 .home-link-brand,
 .home-link-site {
   white-space: nowrap;
 }
-.home-link:hover { color: var(--cyan-bright, #38bdf8); }
+.home-link:hover { color: #e8c98a; }
 .auth-box {
   display: flex;
   align-items: center;
@@ -1514,8 +1524,8 @@ onUnmounted(() => {
   letter-spacing: 0.04em;
   padding: 0.15rem 0.45rem;
   border-radius: 999px;
-  color: #0f172a;
-  background: var(--btn-gradient, linear-gradient(135deg, #38bdf8, #818cf8));
+  color: #1a140c;
+  background: linear-gradient(180deg, #e8c98a, #b08a4a);
 }
 .btn-auth {
   display: inline-flex;
@@ -1547,14 +1557,14 @@ a.btn-auth {
   text-decoration: none;
 }
 .btn-auth.subscribe {
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.55);
-  color: #e0f2fe;
+  background: rgba(212, 175, 110, 0.12);
+  border: 1px solid rgba(212, 175, 110, 0.55);
+  color: #f4e6c4;
 }
 .btn-auth.subscribe:hover {
-  border-color: var(--cyan-bright, #38bdf8);
-  background: rgba(56, 189, 248, 0.22);
-  color: #fff;
+  border-color: #e8c98a;
+  background: rgba(212, 175, 110, 0.22);
+  color: #fff8e8;
 }
 .g-icon { width: 16px; height: 16px; }
 .auth-status {
@@ -1566,123 +1576,41 @@ a.btn-auth {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 1.15rem;
-  margin-bottom: 1.35rem;
-  padding: 0.35rem 0 0.15rem;
+  gap: 0.75rem;
+  margin-bottom: 1.15rem;
+  padding: 0.15rem 0 0.1rem;
   animation: rise 0.7s ease both;
 }
-.brand-row {
+.page-title {
   display: flex;
   align-items: center;
-  gap: 1rem;
-}
-.brand-title-row {
-  display: flex;
-  align-items: baseline;
   flex-wrap: wrap;
-  gap: 0.45rem 0.65rem;
+  gap: 0.7rem 0.85rem;
 }
-.brand-name {
-  color: #7dd3fc;
-  font-family: 'Sora', 'Noto Sans TC', sans-serif;
-  font-size: clamp(1.45rem, 2.8vw, 1.85rem);
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  line-height: 1.05;
-  white-space: nowrap;
+.page-title i {
+  font-size: 1.7rem;
+  color: #e8c98a;
+  filter: drop-shadow(0 0 8px rgba(212, 175, 110, 0.45));
 }
-.brand-name .tm-mark {
-  font-size: 0.58em;
-  font-weight: 700;
-  letter-spacing: 0;
-  margin-left: 0.14em;
-  vertical-align: super;
-  line-height: 0;
-  color: rgba(125, 211, 252, 0.95);
-}
-.brand-mark-wrap {
-  position: relative;
-  width: 56px;
-  height: 56px;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-}
-.brand-mark-ring {
-  position: absolute;
-  inset: -3px;
-  border-radius: 16px;
-  padding: 1.5px;
-  background: conic-gradient(
-    from 160deg,
-    transparent 0%,
-    rgba(56, 189, 248, 0.8) 22%,
-    transparent 48%,
-    rgba(129, 140, 248, 0.55) 72%,
-    transparent 100%
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  opacity: 0.9;
-  animation: brand-spin 9s linear infinite;
-  pointer-events: none;
-}
-.brand-mark-pulse {
-  position: absolute;
-  inset: 2px;
-  border-radius: 13px;
-  background: radial-gradient(circle at 50% 45%, rgba(0, 212, 255, 0.28), transparent 68%);
-  animation: brand-pulse 2.8s ease-in-out infinite;
-  pointer-events: none;
-}
-.brand-mark {
-  position: relative;
-  z-index: 1;
-  width: 52px;
-  height: 52px;
-  border-radius: 13px;
-  box-shadow:
-    0 0 0 1px rgba(0, 212, 255, 0.28),
-    0 8px 28px rgba(0, 0, 0, 0.35),
-    0 0 32px rgba(0, 212, 255, 0.28);
-}
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.hero h1 {
+.page-title h1 {
   margin: 0;
-  font-family: 'Noto Sans TC', 'Sora', 'PingFang TC', sans-serif;
-  font-size: clamp(1.45rem, 2.8vw, 1.85rem);
-  font-weight: 900;
-  letter-spacing: 0.04em;
-  line-height: 1.05;
-  background: linear-gradient(115deg, #e0f2fe 0%, #38bdf8 38%, #67e8f9 62%, #818cf8 100%);
-  background-size: 160% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.22));
-  animation: rise 0.85s ease both, brand-shine 7s ease-in-out infinite;
+  font-size: clamp(1.45rem, 2.6vw, 1.75rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #f4e6c4;
+  text-shadow: 0 0 16px rgba(212, 175, 110, 0.22);
 }
-.brand-accent {
-  display: block;
-  width: 3.4rem;
-  height: 2px;
-  margin-top: 0.55rem;
+.period-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #38bdf8, rgba(129, 140, 248, 0.15));
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.45);
-  animation: brand-accent-in 0.9s ease both 0.15s;
-  transform-origin: left center;
+  border: 1px solid rgba(212, 175, 110, 0.4);
+  background: rgba(8, 15, 28, 0.55);
+  color: #e8c98a;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 .lede {
   margin: 0.85rem 0 0;
@@ -1769,20 +1697,27 @@ a.btn-auth {
   cursor: pointer;
 }
 .heat-head.toggle:hover h2 {
-  color: var(--cyan-bright);
+  color: #f7edd4;
 }
 .heat-head-main {
   display: flex;
-  align-items: baseline;
-  gap: 0.65rem;
+  align-items: center;
+  gap: 0.55rem;
   min-width: 0;
   flex: 1;
   flex-wrap: wrap;
 }
+.heat-head-icon {
+  color: #e8c98a;
+  filter: drop-shadow(0 0 8px rgba(212, 175, 110, 0.4));
+  font-size: 1.05rem;
+}
 .heat-head-main h2 {
   margin: 0;
   font-size: 1.05rem;
-  font-weight: 650;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #f4e6c4;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -1811,19 +1746,24 @@ a.btn-auth {
 }
 .export-btn {
   flex-shrink: 0;
-  border: 1px solid rgba(0, 212, 255, 0.35);
-  background: rgba(0, 212, 255, 0.08);
-  color: var(--cyan-bright);
-  border-radius: 8px;
-  padding: 0.38rem 0.75rem;
+  border: 1.5px solid rgba(212, 175, 110, 0.45);
+  background:
+    radial-gradient(circle at top left, rgba(212, 175, 110, 0.22), transparent 60%),
+    linear-gradient(135deg, rgba(18, 27, 44, 0.95), rgba(8, 12, 22, 0.9));
+  color: #f4e6c4;
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
 }
 .export-btn:hover:not(:disabled) {
-  border-color: rgba(0, 212, 255, 0.55);
-  background: rgba(0, 212, 255, 0.14);
+  border-color: rgba(232, 201, 138, 0.85);
+  background:
+    radial-gradient(circle at top left, rgba(212, 175, 110, 0.32), transparent 60%),
+    linear-gradient(135deg, rgba(22, 32, 52, 0.98), rgba(8, 12, 22, 0.95));
+  box-shadow: 0 0 18px rgba(212, 175, 110, 0.28);
 }
 .export-btn:disabled {
   opacity: 0.55;
@@ -1869,25 +1809,53 @@ a.btn-auth {
   flex-wrap: wrap;
   gap: 0.35rem;
 }
-.chip-btn {
-  border: 1px solid var(--line);
-  background: rgba(7, 11, 20, 0.55);
-  color: var(--text-muted);
+.chip-btn,
+.period-chip,
+.ranking-type-chip {
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(232, 201, 138, 0.68);
   border-radius: 999px;
-  padding: 0.24rem 0.62rem;
+  padding: 0.28rem 0.72rem;
   font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
 }
-.chip-btn:hover {
-  border-color: rgba(0, 212, 255, 0.35);
-  color: var(--text);
+.chip-btn:hover,
+.period-chip:hover,
+.ranking-type-chip:hover {
+  color: #f7edd4;
+  background: rgba(212, 175, 110, 0.12);
 }
-.chip-btn.active {
-  color: var(--cyan-bright);
-  border-color: rgba(0, 212, 255, 0.45);
-  background: rgba(0, 212, 255, 0.1);
+.chip-btn.active,
+.period-chip.active,
+.ranking-type-chip.active {
+  color: #1a140c;
+  border-color: rgba(232, 201, 138, 0.9);
+  background:
+    radial-gradient(circle at top, rgba(232, 201, 138, 0.4), transparent 60%),
+    linear-gradient(180deg, #e8c98a, #b08a4a);
+  box-shadow: 0 6px 16px rgba(212, 175, 110, 0.28), inset 0 1px 0 rgba(255, 248, 230, 0.35);
+}
+.ranking-period-toggle,
+.ranking-type-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 4px;
+  border-radius: 14px;
+  border: 1px solid rgba(212, 175, 110, 0.22);
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.42) 0%, rgba(8, 15, 28, 0.88) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 248, 230, 0.08), 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+.ranking-type-toggle .btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 .type-toggle {
   margin-top: 0.55rem;
@@ -1898,18 +1866,19 @@ a.btn-auth {
   gap: 0.45rem;
 }
 .type-toggle .btns button {
-  border: 1px solid var(--line);
-  background: rgba(7, 11, 20, 0.55);
-  color: var(--text-dim);
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(232, 201, 138, 0.72);
   border-radius: 999px;
   padding: 0.28rem 0.75rem;
   font-size: 0.8rem;
+  font-weight: 600;
   cursor: pointer;
 }
 .type-toggle .btns button.active {
-  color: var(--cyan-bright);
-  border-color: rgba(0, 212, 255, 0.45);
-  background: rgba(0, 212, 255, 0.1);
+  color: #1a140c;
+  border-color: rgba(232, 201, 138, 0.9);
+  background: linear-gradient(180deg, #e8c98a, #b08a4a);
 }
 .filters {
   display: grid;
@@ -1917,18 +1886,35 @@ a.btn-auth {
   gap: 0.75rem;
 }
 .fund-block {
-  border-top: 1px solid rgba(148, 183, 205, 0.14);
-  padding-top: 0.55rem;
+  border-top: 1px solid rgba(212, 175, 110, 0.14);
+  padding-top: 0.7rem;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem 0.75rem;
 }
-.fund-head h3 {
+.step-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.step-num {
+  font-family: Inter, "SF Pro Text", "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #1a140c;
+  background: linear-gradient(180deg, #e8c98a, #b08a4a);
+  border-radius: 999px;
+  padding: 0.12rem 0.42rem;
+  line-height: 1.2;
+}
+.fund-head h3,
+.step-head h3 {
   margin: 0;
   font-size: 0.88rem;
   font-weight: 650;
-  color: #e8f4ff;
+  color: #f3d9a4;
   white-space: nowrap;
 }
 .fund-grid {
@@ -1998,8 +1984,8 @@ a.btn-auth {
   }
 }
 .ta-block {
-  border-top: 1px solid rgba(148, 183, 205, 0.14);
-  padding-top: 0.55rem;
+  border-top: 1px solid rgba(212, 175, 110, 0.14);
+  padding-top: 0.7rem;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2019,9 +2005,9 @@ a.btn-auth {
   letter-spacing: 0.04em;
   padding: 0.12rem 0.45rem;
   border-radius: 999px;
-  color: var(--cyan-bright, #38bdf8);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  background: rgba(56, 189, 248, 0.1);
+  color: #e8c98a;
+  border: 1px solid rgba(212, 175, 110, 0.4);
+  background: rgba(8, 15, 28, 0.55);
 }
 .ta-hint {
   flex: 1 1 100%;
@@ -2037,23 +2023,8 @@ a.btn-auth {
   min-width: 0;
 }
 .ta-chip-row .chip-btn {
-  border: 1px solid var(--line);
-  background: rgba(7, 11, 20, 0.55);
-  color: var(--text-muted);
-  border-radius: 999px;
   padding: 0.28rem 0.72rem;
   font-size: 0.82rem;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.ta-chip-row .chip-btn:hover {
-  border-color: rgba(0, 212, 255, 0.35);
-  color: var(--text);
-}
-.ta-chip-row .chip-btn.active {
-  color: var(--cyan-bright);
-  border-color: rgba(0, 212, 255, 0.45);
-  background: rgba(0, 212, 255, 0.1);
 }
 .ta-chip-row .chip-label-short {
   display: none;
@@ -2069,7 +2040,7 @@ a.btn-auth {
   text-underline-offset: 2px;
 }
 .chip-clear:hover {
-  color: var(--cyan-bright);
+  color: #e8c98a;
 }
 .actions {
   display: flex;
@@ -2084,30 +2055,29 @@ a.btn-auth {
   font-weight: 650;
 }
 .btn-update-data {
-  /* 與「搜尋權證」同尺寸；用次強調色區隔動作 */
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(129, 140, 248, 0.22));
-  color: #e0f2fe;
-  border: 1px solid rgba(56, 189, 248, 0.45);
-  box-shadow: 0 6px 16px rgba(56, 189, 248, 0.12);
+  background: rgba(212, 175, 110, 0.12);
+  color: #f4e6c4;
+  border: 1px solid rgba(212, 175, 110, 0.45);
+  box-shadow: none;
 }
 .btn-update-data:hover:not(:disabled) {
-  border-color: rgba(56, 189, 248, 0.7);
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.28), rgba(129, 140, 248, 0.3));
-  color: #fff;
+  border-color: rgba(232, 201, 138, 0.75);
+  background: rgba(212, 175, 110, 0.2);
+  color: #fff8e8;
 }
 .btn-clear-sm {
   font-size: 0.76rem;
   padding: 0.28rem 0.55rem;
-  border-radius: 6px;
+  border-radius: 999px;
   color: var(--text);
-  background: rgba(0, 212, 255, 0.04);
-  border-color: rgba(0, 212, 255, 0.22);
+  background: rgba(212, 175, 110, 0.06);
+  border-color: rgba(212, 175, 110, 0.22);
   white-space: nowrap;
 }
 .btn-clear-sm:hover:not(:disabled) {
-  color: var(--cyan-bright);
-  border-color: rgba(0, 212, 255, 0.4);
-  background: rgba(0, 212, 255, 0.08);
+  color: #e8c98a;
+  border-color: rgba(212, 175, 110, 0.45);
+  background: rgba(212, 175, 110, 0.12);
   transform: none;
   box-shadow: none;
 }
@@ -2158,19 +2128,20 @@ a.btn-auth {
 }
 .results-export-btn {
   flex-shrink: 0;
-  border: 1px solid rgba(0, 212, 255, 0.35);
-  background: rgba(0, 212, 255, 0.08);
-  color: var(--cyan-bright);
-  border-radius: 7px;
-  padding: 0.3rem 0.62rem;
+  border: 1.5px solid rgba(212, 175, 110, 0.45);
+  background:
+    radial-gradient(circle at top left, rgba(212, 175, 110, 0.22), transparent 60%),
+    linear-gradient(135deg, rgba(18, 27, 44, 0.95), rgba(8, 12, 22, 0.9));
+  color: #f4e6c4;
+  border-radius: 999px;
+  padding: 0.3rem 0.72rem;
   font-size: 0.76rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
 }
 .results-export-btn--ready {
-  border-color: rgba(0, 212, 255, 0.55);
-  background: rgba(0, 212, 255, 0.14);
+  border-color: rgba(232, 201, 138, 0.75);
 }
 .results-export-btn:disabled {
   opacity: 0.45;
@@ -2191,9 +2162,9 @@ a.btn-auth {
   cursor: pointer;
 }
 .results-export-scope button.active {
-  color: var(--cyan-bright);
-  border-color: rgba(0, 212, 255, 0.45);
-  background: rgba(0, 212, 255, 0.1);
+  color: #1a140c;
+  border-color: rgba(232, 201, 138, 0.9);
+  background: linear-gradient(180deg, #e8c98a, #b08a4a);
 }
 .results-toolbar-row--search {
   gap: 0.35rem;
@@ -2229,9 +2200,9 @@ a.btn-auth {
   cursor: pointer;
 }
 .results-type-chips button.active {
-  color: var(--cyan-bright);
-  border-color: rgba(0, 212, 255, 0.45);
-  background: rgba(0, 212, 255, 0.1);
+  color: #1a140c;
+  border-color: rgba(232, 201, 138, 0.9);
+  background: linear-gradient(180deg, #e8c98a, #b08a4a);
 }
 .results-toolbar-row--sort {
   gap: 0.35rem 0.45rem;
@@ -2272,8 +2243,7 @@ a.btn-auth {
   padding: 0.22rem 0.52rem;
 }
 .sort-dir-btn {
-  color: var(--cyan-bright);
-  border-color: rgba(0, 212, 255, 0.35);
+  color: #e8c98a;
 }
 .carousel-bar-main {
   min-width: 0;
@@ -2282,7 +2252,7 @@ a.btn-auth {
 .carousel-indicator {
   font-size: 0.88rem;
   font-weight: 650;
-  color: var(--cyan-bright);
+  color: #e8c98a;
 }
 .carousel-current {
   margin: 0.25rem 0 0;
@@ -2298,24 +2268,24 @@ a.btn-auth {
 .carousel-btn {
   font-size: 0.78rem;
   padding: 0.32rem 0.62rem;
-  border-radius: 7px;
-  border: 1px solid rgba(0, 212, 255, 0.28);
-  background: rgba(0, 212, 255, 0.06);
+  border-radius: 999px;
+  border: 1px solid rgba(212, 175, 110, 0.28);
+  background: rgba(212, 175, 110, 0.06);
   color: var(--text);
   white-space: nowrap;
 }
 .carousel-btn:hover {
-  border-color: rgba(0, 212, 255, 0.45);
-  color: var(--cyan-bright);
-  background: rgba(0, 212, 255, 0.1);
+  border-color: rgba(232, 201, 138, 0.55);
+  color: #f7edd4;
+  background: rgba(212, 175, 110, 0.12);
 }
 .carousel-btn--play.active {
-  color: #fcd34d;
-  border-color: rgba(245, 158, 11, 0.45);
-  background: rgba(245, 158, 11, 0.12);
+  color: #1a140c;
+  border-color: rgba(232, 201, 138, 0.9);
+  background: linear-gradient(180deg, #e8c98a, #b08a4a);
 }
 .carousel-btn--start {
-  color: var(--cyan-bright);
+  color: #e8c98a;
   font-weight: 650;
 }
 @media (max-width: 640px) {
@@ -2338,26 +2308,8 @@ a.btn-auth {
     padding: 0.38rem 0.62rem;
     font-size: 0.78rem;
   }
-  .brand-row {
-    gap: 0.8rem;
-  }
-  .brand-mark-wrap {
-    width: 48px;
-    height: 48px;
-  }
-  .brand-mark {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-  }
-  .brand-mark-ring {
-    border-radius: 14px;
-  }
-  .brand-title-row {
-    gap: 0.35rem 0.5rem;
-  }
-  .hero h1 {
-    letter-spacing: 0.03em;
+  .page-title h1 {
+    letter-spacing: 0.06em;
   }
   .carousel-bar {
     flex-direction: column;
@@ -2449,8 +2401,8 @@ a.btn-auth {
   z-index: 1;
 }
 .back-btn:hover {
-  border-color: rgba(0, 212, 255, 0.45);
-  color: var(--cyan-bright);
+  border-color: rgba(232, 201, 138, 0.55);
+  color: #e8c98a;
 }
 
 .workspace {
