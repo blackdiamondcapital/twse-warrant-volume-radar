@@ -38,6 +38,7 @@ import {
 } from './lib/taScreenRules.js'
 import { getCarouselLimitForUser, getWatchlistLimitsForUser } from './utils/planAccess.js'
 import { readWarrantWatchlist, toggleWarrantWatchlist } from './utils/warrantWatchlist.js'
+import { applyViewPageSeo, syncViewPath, viewFromPathname } from './utils/pageSeo.js'
 
 const {
   isAuthenticated,
@@ -250,8 +251,24 @@ const heatSectionOpen = ref(true)
 const heatDatesOpen = ref(false)
 const exportingHeat = ref(false)
 /** 站內選單：heat／search／screener／watchlist／ranking 皆為權證引擎功能 */
-const engineView = ref('heat')
+const engineView = ref(viewFromPathname(typeof window !== 'undefined' ? window.location.pathname : '/'))
 const ENGINE_VIEWS = ['heat', 'search', 'screener', 'watchlist', 'ranking']
+const PAGE_H1 = {
+  heat: '台股權證篩選與當日成交熱度',
+  search: '台股權證搜尋：基本面與技術面篩選',
+  screener: '台股權證總覽：未到期認購認售',
+  watchlist: '權證自選股',
+  ranking: '權證報酬排行',
+}
+const PAGE_LEDE = {
+  heat: '查詢台股認購／認售成交熱度，對照上市上櫃排行，找出當日市場焦點權證。',
+  search: '依標的、履約價、剩餘天數與技術條件篩選全市場權證，再用全螢幕 K 線研究走勢。',
+  screener: '瀏覽未到期台股權證列表，可切換認購／認售，並依漲跌、成交與剩餘天數排序。',
+  watchlist: '集中追蹤關注的認購／認售，搭配技術分析圖表查看收盤與到期日。',
+  ranking: '比較台股權證期間報酬，快速找出相對強弱的認購／認售標的。',
+}
+const pageH1 = computed(() => PAGE_H1[engineView.value] || PAGE_H1.heat)
+const pageLede = computed(() => PAGE_LEDE[engineView.value] || PAGE_LEDE.heat)
 const watchlistTick = ref(0)
 const watchlistCodes = computed(() => {
   watchlistTick.value
@@ -894,6 +911,15 @@ function setEngineView(view) {
   }
 }
 
+watch(
+  engineView,
+  (view) => {
+    applyViewPageSeo(view)
+    syncViewPath(view)
+  },
+  { immediate: true },
+)
+
 function onToggleWatchlist(row) {
   const code = row?.warrant_code
   if (!code) return
@@ -1222,9 +1248,12 @@ onUnmounted(() => {
       </div>
     </nav>
 
-    <template v-if="engineView === 'heat' || engineView === 'search' || (engineView === 'screener' && !showMasterResults)">
+    <template v-if="engineView === 'heat' || engineView === 'search' || engineView === 'watchlist' || engineView === 'ranking' || (engineView === 'screener' && !showMasterResults)">
     <header class="hero">
-      <p class="lede">從權證總覽篩選全市場標的，追蹤當日成交熱度，並以全螢幕技術分析檢視單檔走勢。</p>
+      <div class="page-title">
+        <h1>{{ pageH1 }}</h1>
+      </div>
+      <p class="lede">{{ pageLede }}</p>
       <p v-if="stats" class="hero-stats">
         <span class="stat"><span class="label">主檔歷史總數</span><strong>{{ stats.total_master?.toLocaleString?.() }}</strong></span>
         <span class="stat-sep" aria-hidden="true">·</span>

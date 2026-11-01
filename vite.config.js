@@ -36,10 +36,10 @@ export default defineConfig(({ mode }) => {
           'og-image.png',
         ],
         manifest: {
-          name: 'QuantGems 權證引擎',
+          name: 'QuantGems® 權證引擎',
           short_name: '權證引擎',
           description:
-            '想快速鎖定台股權證？掃全市場認購／認售、追當日成交熱度，並以全螢幕 K 線與多空線檢視走勢。',
+            '查詢台股認購／認售、篩選履約價與剩餘天數、追當日成交熱度，並用全螢幕 K 線研究走勢。',
           theme_color: '#06121e',
           background_color: '#06121e',
           display: 'standalone',
