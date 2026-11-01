@@ -942,13 +942,22 @@ async function selectMasterWarrant(row) {
 }
 
 function setMasterType(type) {
+  if (filters.type === type) return
   filters.type = type
+  filters.page = 1
+  if (engineView.value === 'screener' && !showMasterResults.value) {
+    loadMaster()
+  }
 }
 
 async function setMasterTypeAndSearch(type) {
+  if (filters.type === type && showMasterResults.value) return
   filters.type = type
+  filters.page = 1
   if (showMasterResults.value) {
     await onSearch()
+  } else if (engineView.value === 'screener') {
+    await loadMaster()
   }
 }
 
@@ -1499,6 +1508,29 @@ onUnmounted(() => {
 
     <template v-if="engineView === 'screener' && !showMasterResults">
     <p v-if="statusText" class="status muted">{{ statusText }}</p>
+    <div class="overview-toolbar panel">
+      <span class="overview-toolbar-label">類型</span>
+      <div class="chip-btns ranking-type-toggle">
+        <button
+          type="button"
+          class="chip-btn ranking-type-chip"
+          :class="{ active: filters.type === '' }"
+          @click="setMasterType('')"
+        >全部</button>
+        <button
+          type="button"
+          class="chip-btn ranking-type-chip"
+          :class="{ active: filters.type === '認購' }"
+          @click="setMasterType('認購')"
+        >認購</button>
+        <button
+          type="button"
+          class="chip-btn ranking-type-chip"
+          :class="{ active: filters.type === '認售' }"
+          @click="setMasterType('認售')"
+        >認售</button>
+      </div>
+    </div>
     <div class="workspace">
       <MasterScreener
         :rows="masterRows"
@@ -2576,6 +2608,21 @@ a.btn-auth {
   color: #1a140c;
   border-color: rgba(232, 201, 138, 0.9);
   background: linear-gradient(180deg, #e8c98a, #b08a4a);
+}
+.overview-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+  margin-bottom: 0.65rem;
+  padding: 0.55rem 0.75rem;
+}
+.overview-toolbar-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #c9b08a;
+  flex-shrink: 0;
 }
 .results-toolbar-row--search {
   gap: 0.35rem;
