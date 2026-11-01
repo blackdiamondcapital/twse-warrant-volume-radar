@@ -228,12 +228,15 @@ function fmtExpiryShort(row) {
 
 function fmtDays(row) {
   const days = resolveDaysToExpiry(row)
-  return days == null ? '—' : days
+  if (days == null) return '—'
+  if (days < 0) return '已到期'
+  return days
 }
 
 function daysClass(row) {
   const days = resolveDaysToExpiry(row)
   if (days == null) return ''
+  if (days < 0) return 'days-expired'
   if (days <= 7) return 'days-urgent'
   if (days <= 30) return 'days-soon'
   return ''
@@ -465,6 +468,7 @@ const sortableHeaders = [
 .expiry-full { display: inline; }
 .days-soon { color: #e8c98a; font-weight: 600; }
 .days-urgent { color: #ff6b6b; font-weight: 700; }
+.days-expired { color: var(--text-muted, #8b93a7); font-weight: 500; }
 @media (max-width: 767px) {
   .expiry-full { display: none; }
   .expiry-short { display: inline; }
