@@ -40,6 +40,9 @@ const {
 } = useAuth()
 
 const authStatus = ref('')
+const MAIN_SITE_URL = 'https://www.quantgems.com'
+const MAIN_WATCHLIST_URL = `${MAIN_SITE_URL}/?view=watchlist`
+const MAIN_RANKING_URL = `${MAIN_SITE_URL}/ranking`
 
 function handleGoogleLogin() {
   const url = buildOAuthStartUrl('google')
@@ -1112,6 +1115,14 @@ onUnmounted(() => {
           <i class="fas fa-filter" aria-hidden="true"></i>
           權證總覽
         </button>
+        <a class="nav-item" :href="MAIN_WATCHLIST_URL">
+          <i class="fas fa-star" aria-hidden="true"></i>
+          自選股
+        </a>
+        <a class="nav-item" :href="MAIN_RANKING_URL">
+          <i class="fas fa-trophy" aria-hidden="true"></i>
+          報酬排行
+        </a>
       </div>
     </nav>
 
@@ -1595,6 +1606,7 @@ onUnmounted(() => {
   cursor: pointer;
   box-shadow: none;
   white-space: nowrap;
+  text-decoration: none;
 }
 .engine-nav .nav-item i {
   font-size: 0.9rem;
