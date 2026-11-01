@@ -82,6 +82,12 @@ const filters = reactive({
   ratioMax: '',
   volumeMin: '',
   volumeMax: '',
+  turnoverMin: '',
+  turnoverMax: '',
+  issuanceMin: '',
+  issuanceMax: '',
+  changePctMin: '',
+  changePctMax: '',
   daysMin: '',
   daysMax: '',
   sort: 'expiry',
@@ -427,8 +433,15 @@ function hasSearchScope() {
     || filters.ratioMax
     || filters.volumeMin
     || filters.volumeMax
+    || filters.turnoverMin
+    || filters.turnoverMax
+    || filters.issuanceMin
+    || filters.issuanceMax
+    || filters.changePctMin
+    || filters.changePctMax
     || filters.daysMin
     || filters.daysMax
+    || (filters.market && filters.market !== 'both')
   )
 }
 
@@ -995,7 +1008,17 @@ function clearTaFilters() {
   if (showMasterResults.value) loadMaster()
 }
 
+function setMasterMarket(market) {
+  filters.market = market
+}
+
+function setDaysPreset(maxDays) {
+  filters.daysMin = '0'
+  filters.daysMax = maxDays == null ? '' : String(maxDays)
+}
+
 function clearFundamentalFilters() {
+  filters.market = 'both'
   filters.expiryFrom = ''
   filters.expiryTo = ''
   filters.closeMin = ''
@@ -1006,6 +1029,12 @@ function clearFundamentalFilters() {
   filters.ratioMax = ''
   filters.volumeMin = ''
   filters.volumeMax = ''
+  filters.turnoverMin = ''
+  filters.turnoverMax = ''
+  filters.issuanceMin = ''
+  filters.issuanceMax = ''
+  filters.changePctMin = ''
+  filters.changePctMax = ''
   filters.daysMin = ''
   filters.daysMax = ''
   filters.page = 1
@@ -1316,11 +1345,46 @@ onUnmounted(() => {
           <h3>基本面</h3>
         </div>
         <div class="fund-grid">
+          <div class="fund-chip-row">
+            <span class="heat-row-label">市場</span>
+            <div class="chip-btns ranking-period-toggle">
+              <button type="button" class="chip-btn period-chip" :class="{ active: filters.market === 'both' }" @click="setMasterMarket('both')">全市場</button>
+              <button type="button" class="chip-btn period-chip" :class="{ active: filters.market === 'twse' }" @click="setMasterMarket('twse')">上市</button>
+              <button type="button" class="chip-btn period-chip" :class="{ active: filters.market === 'tpex' }" @click="setMasterMarket('tpex')">上櫃</button>
+            </div>
+          </div>
+          <div class="fund-chip-row">
+            <span class="heat-row-label">剩餘</span>
+            <div class="chip-btns ranking-period-toggle">
+              <button type="button" class="chip-btn period-chip" :class="{ active: filters.daysMin === '0' && filters.daysMax === '7' }" @click="setDaysPreset(7)">7 日內</button>
+              <button type="button" class="chip-btn period-chip" :class="{ active: filters.daysMin === '0' && filters.daysMax === '30' }" @click="setDaysPreset(30)">30 日內</button>
+              <button type="button" class="chip-btn period-chip" :class="{ active: filters.daysMin === '0' && filters.daysMax === '90' }" @click="setDaysPreset(90)">90 日內</button>
+              <button type="button" class="chip-btn period-chip" :class="{ active: filters.daysMin === '0' && filters.daysMax === '180' }" @click="setDaysPreset(180)">半年內</button>
+            </div>
+          </div>
           <div class="range-field">
             <label>收盤</label>
             <input v-model="filters.closeMin" type="number" step="any" min="0" placeholder="低" />
             <span class="sep">–</span>
             <input v-model="filters.closeMax" type="number" step="any" min="0" placeholder="高" />
+          </div>
+          <div class="range-field range-field--pct">
+            <label>漲跌幅%</label>
+            <input v-model="filters.changePctMin" type="number" step="any" placeholder="低" />
+            <span class="sep">–</span>
+            <input v-model="filters.changePctMax" type="number" step="any" placeholder="高" />
+          </div>
+          <div class="range-field range-field--volume">
+            <label>成交量</label>
+            <input v-model="filters.volumeMin" type="number" step="1" min="0" placeholder="低" />
+            <span class="sep">–</span>
+            <input v-model="filters.volumeMax" type="number" step="1" min="0" placeholder="高" />
+          </div>
+          <div class="range-field range-field--turnover">
+            <label>成交金額</label>
+            <input v-model="filters.turnoverMin" type="number" step="1" min="0" placeholder="低" />
+            <span class="sep">–</span>
+            <input v-model="filters.turnoverMax" type="number" step="1" min="0" placeholder="高" />
           </div>
           <div class="range-field range-field--exercise">
             <label>履約價</label>
@@ -1333,6 +1397,12 @@ onUnmounted(() => {
             <input v-model="filters.ratioMin" type="number" step="any" min="0" placeholder="低" />
             <span class="sep">–</span>
             <input v-model="filters.ratioMax" type="number" step="any" min="0" placeholder="高" />
+          </div>
+          <div class="range-field range-field--issuance">
+            <label>發行量</label>
+            <input v-model="filters.issuanceMin" type="number" step="1" min="0" placeholder="低" />
+            <span class="sep">–</span>
+            <input v-model="filters.issuanceMax" type="number" step="1" min="0" placeholder="高" />
           </div>
           <div class="range-field range-field--days">
             <label>剩餘天數</label>
@@ -2215,6 +2285,13 @@ a.btn-auth {
   flex: 1;
   min-width: 0;
 }
+.fund-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1 1 100%;
+  min-width: 0;
+}
 .range-field {
   display: inline-flex;
   align-items: center;
@@ -2248,8 +2325,13 @@ a.btn-auth {
   width: 3.6rem;
   padding: 0.32rem 0.35rem;
 }
-.range-field--volume input {
+.range-field--volume input,
+.range-field--turnover input,
+.range-field--issuance input {
   width: 5.2rem;
+}
+.range-field--pct input {
+  width: 4.4rem;
 }
 .range-field--date input {
   width: 8.1rem;
