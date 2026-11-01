@@ -40,6 +40,8 @@ const columns = computed(() => [
   { key: 'name', label: '名稱' },
   { key: 'underlying', label: '標的' },
   { key: 'close', label: '收盤', align: 'num' },
+  { key: 'price_change', label: '漲跌', align: 'num' },
+  { key: 'change_pct', label: '漲跌幅', align: 'num' },
   { key: 'volume', label: '成交量', align: 'num' },
   { key: 'exercise', label: '履約價', align: 'num' },
   { key: 'days', label: '剩餘天數', headerLines: ['剩餘', '天數'], align: 'num' },
@@ -93,6 +95,51 @@ function daysClass(row) {
   if (days <= 7) return 'days-urgent'
   if (days <= 30) return 'days-soon'
   return ''
+}
+
+function sortNum(v) {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+function rowPriceChange(row) {
+  return sortNum(row?.price_change)
+}
+
+function rowChangePct(row) {
+  const fromApi = sortNum(row?.change_pct)
+  if (fromApi != null) return fromApi
+  const chg = rowPriceChange(row)
+  const close = sortNum(row?.close_price)
+  if (chg == null || close == null) return null
+  const ref = close - chg
+  if (!ref) return null
+  return (chg / ref) * 100
+}
+
+function fmtSigned(n, digits = 2) {
+  const v = sortNum(n)
+  if (v == null) return '—'
+  const abs = fmt(Math.abs(v), digits)
+  if (v > 0) return `+${abs}`
+  if (v < 0) return `-${abs}`
+  return abs
+}
+
+function fmtSignedPct(n) {
+  const v = sortNum(n)
+  if (v == null) return '—'
+  const abs = fmt(Math.abs(v), 2)
+  if (v > 0) return `+${abs}%`
+  if (v < 0) return `-${abs}%`
+  return `${abs}%`
+}
+
+function changeToneClass(n) {
+  const v = sortNum(n)
+  if (v == null || v === 0) return ''
+  return v > 0 ? 'ch-up' : 'ch-down'
 }
 </script>
 
@@ -158,6 +205,8 @@ function daysClass(row) {
             <col class="col-name" />
             <col class="col-underlying" />
             <col class="col-close" />
+            <col class="col-change" />
+            <col class="col-change-pct" />
             <col class="col-volume" />
             <col class="col-exercise" />
             <col class="col-days" />
@@ -201,6 +250,12 @@ function daysClass(row) {
                 >{{ warrantTypeLabel(row) }}</span>
               </td>
               <td class="num mono col-close">{{ fmt(row.close_price, 2) }}</td>
+              <td class="num mono col-change" :class="changeToneClass(rowPriceChange(row))">
+                {{ fmtSigned(rowPriceChange(row), 2) }}
+              </td>
+              <td class="num mono col-change-pct" :class="changeToneClass(rowPriceChange(row))">
+                {{ fmtSignedPct(rowChangePct(row)) }}
+              </td>
               <td class="num mono col-volume">{{ fmt(row.volume, 0) }}</td>
               <td class="num mono col-exercise">{{ fmt(row.latest_exercise_price) }}</td>
               <td class="num mono cell-days col-days" :class="daysClass(row)">
@@ -234,14 +289,24 @@ function daysClass(row) {
 }
 .master-table {
   table-layout: fixed;
-  min-width: 880px;
+  min-width: 980px;
 }
 .master-table .col-code { width: 5.6rem; }
 .master-table .col-name { width: 10.5rem; }
 .master-table .col-underlying { width: 5.2rem; }
 .master-table .col-close { width: 4rem; }
+.master-table .col-change { width: 4rem; }
+.master-table .col-change-pct { width: 4.6rem; }
 .master-table .col-volume { width: 4.8rem; }
 .master-table .col-exercise { width: 4.2rem; }
+.ch-up {
+  color: #f87171;
+  font-weight: 650;
+}
+.ch-down {
+  color: #4ade80;
+  font-weight: 650;
+}
 .master-table .col-days { width: 3.6rem; }
 .master-table .col-expiry { width: 6.2rem; }
 .screener table.data th {

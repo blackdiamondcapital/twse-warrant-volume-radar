@@ -171,6 +171,7 @@ function paginateClientFilteredRows(page) {
   const start = (page - 1) * filters.pageSize
   masterRows.value = taFilteredRows.value.slice(start, start + filters.pageSize)
   statusText.value = clientFilterStatusLabel(masterTotal.value, page)
+  scheduleMasterPriceEnrich()
 }
 const loadingMaster = ref(false)
 const masterScreenerOpen = ref(false)
@@ -407,6 +408,7 @@ async function loadMaster() {
       masterRows.value = rows
       masterTotal.value = Number(data.total) || rows.length
       clientFilterActive.value = false
+      scheduleMasterPriceEnrich()
       const qLabel = String(filters.q).trim()
       const doneLabel = rows.length
         ? `標的／代號「${qLabel}」符合 ${masterTotal.value.toLocaleString()} 檔 · 第 ${filters.page} 頁`
@@ -488,6 +490,7 @@ async function loadMaster() {
     masterRows.value = keepUnexpiredRows(data.data || [])
     masterTotal.value = data.total || 0
     statusText.value = `未到期主檔 ${data.total?.toLocaleString?.() || 0} 檔 · 顯示第 ${data.page} 頁`
+    scheduleMasterPriceEnrich()
   } catch (err) {
     if (loadRequestId !== masterLoadRequestId) return
     console.error(err)
@@ -574,6 +577,49 @@ async function mapPool(items, limit, fn) {
   }
   const n = Math.min(Math.max(1, limit), items.length)
   await Promise.all(Array.from({ length: n }, () => worker()))
+}
+
+function scheduleMasterPriceEnrich() {
+  const rows = masterRows.value
+  if (!rows?.length) return
+  void enrichMasterPriceChange(rows, masterLoadRequestId)
+}
+
+async function enrichMasterPriceChange(rows, loadRequestId) {
+  const need = (rows || []).filter((row) => {
+    if (!row?.warrant_code) return false
+    if (!rankingHasChange(row)) return true
+    const chg = Number(row.price_change)
+    const pct = Number(row.change_pct)
+    return (row.price_change == null || chg === 0) && (row.change_pct == null || pct === 0)
+  })
+  if (!need.length) return
+  await mapPool(need, 8, async (row) => {
+    if (loadRequestId !== masterLoadRequestId) return
+    const end = String(row.latest_trade_date || '').slice(0, 10)
+    if (!end) return
+    const start = shiftIsoDate(end, -21)
+    try {
+      const data = await fetchTimeseries({
+        code: row.warrant_code,
+        start: start || undefined,
+        end: end || undefined,
+        limitDays: 12,
+      })
+      const next = computeChangeFromBars(data?.data || data?.rows || [], end)
+      if (next.price_change == null && next.change_pct == null) return
+      if (loadRequestId !== masterLoadRequestId) return
+      const idx = masterRows.value.findIndex(
+        (item) => item.warrant_code === row.warrant_code && item.market === row.market,
+      )
+      if (idx < 0) return
+      const current = masterRows.value[idx]
+      if (rankingHasChange(current) && Number(current.price_change) !== 0) return
+      masterRows.value[idx] = { ...current, ...next }
+    } catch {
+      /* 單檔失敗不擋整表 */
+    }
+  })
 }
 
 async function enrichRankingPriceChange(rows, tradeDate, reqId) {

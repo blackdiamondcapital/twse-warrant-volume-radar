@@ -41,6 +41,8 @@ export function rowToDetailSheetRow(row) {
     標的名稱: normalized.underlying_name ?? '',
     市場: normalized.market ?? '',
     收盤: normalized.close_price ?? '',
+    漲跌: normalized.price_change ?? '',
+    '漲跌幅(%)': normalized.change_pct ?? '',
     成交量: normalized.volume ?? '',
     履約價: normalized.latest_exercise_price ?? '',
     行使比例: normalized.latest_exercise_ratio ?? '',
