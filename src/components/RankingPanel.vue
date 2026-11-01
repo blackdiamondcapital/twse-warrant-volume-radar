@@ -26,6 +26,8 @@ const SORT_LABELS = {
   warrant_name: '名稱',
   underlying: '標的',
   close_price: '收盤',
+  price_change: '漲跌',
+  change_pct: '漲跌幅',
   volume: '張數',
   turnover: '金額',
 }
@@ -82,6 +84,12 @@ function compareRows(a, b) {
     const lb = resolveVolumeLots(b.volume, b.close_price, b.turnover) ?? -1
     return (la - lb) * dir
   }
+  if (key === 'price_change') {
+    return ((rowPriceChange(a) ?? -999999) - (rowPriceChange(b) ?? -999999)) * dir
+  }
+  if (key === 'change_pct') {
+    return ((rowChangePct(a) ?? -999999) - (rowChangePct(b) ?? -999999)) * dir
+  }
   if (key === 'close_price' || key === 'turnover') {
     return ((sortNum(a[key]) ?? -1) - (sortNum(b[key]) ?? -1)) * dir
   }
@@ -122,12 +130,55 @@ function fmt(n, digits = 0) {
   })
 }
 
+function rowPriceChange(row) {
+  const v = sortNum(row?.price_change)
+  if (v != null) return v
+  return null
+}
+
+function rowChangePct(row) {
+  const fromApi = sortNum(row?.change_pct)
+  if (fromApi != null) return fromApi
+  const chg = rowPriceChange(row)
+  const close = sortNum(row?.close_price)
+  if (chg == null || close == null) return null
+  const ref = close - chg
+  if (!ref) return null
+  return (chg / ref) * 100
+}
+
+function fmtSigned(n, digits = 2) {
+  const v = sortNum(n)
+  if (v == null) return '—'
+  const abs = fmt(Math.abs(v), digits)
+  if (v > 0) return `+${abs}`
+  if (v < 0) return `-${abs}`
+  return abs
+}
+
+function fmtSignedPct(n) {
+  const v = sortNum(n)
+  if (v == null) return '—'
+  const abs = fmt(Math.abs(v), 2)
+  if (v > 0) return `+${abs}%`
+  if (v < 0) return `-${abs}%`
+  return `${abs}%`
+}
+
+function changeToneClass(n) {
+  const v = sortNum(n)
+  if (v == null || v === 0) return ''
+  return v > 0 ? 'ch-up' : 'ch-down'
+}
+
 const sortableHeaders = [
   { key: 'rank', label: '#', class: '' },
   { key: 'warrant_code', label: '代號', class: '' },
   { key: 'warrant_name', label: '名稱', class: '' },
   { key: 'underlying', label: '標的', class: '' },
   { key: 'close_price', label: '收盤', class: 'num' },
+  { key: 'price_change', label: '漲跌', class: 'num' },
+  { key: 'change_pct', label: '漲跌幅', class: 'num' },
   { key: 'volume', label: '張數', class: 'num' },
   { key: 'turnover', label: '金額', class: 'num' },
 ]
@@ -183,6 +234,12 @@ const sortableHeaders = [
               <span class="underlying-name">{{ row.underlying_name || '—' }}</span>
             </td>
             <td class="num mono">{{ fmt(row.close_price, 2) }}</td>
+            <td class="num mono" :class="changeToneClass(rowPriceChange(row))">
+              {{ fmtSigned(rowPriceChange(row), 2) }}
+            </td>
+            <td class="num mono" :class="changeToneClass(rowChangePct(row))">
+              {{ fmtSignedPct(rowChangePct(row)) }}
+            </td>
             <td
               class="num mono"
               :class="{ 'metric-em': metric === 'volume' && sortKey === 'volume' }"
@@ -245,6 +302,14 @@ const sortableHeaders = [
 .table-wrap { max-height: min(48vh, 480px); }
 .metric-em {
   color: var(--cyan-bright, #38bdf8);
+  font-weight: 650;
+}
+.ch-up {
+  color: #f87171;
+  font-weight: 650;
+}
+.ch-down {
+  color: #4ade80;
   font-weight: 650;
 }
 .sortable-th {

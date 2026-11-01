@@ -81,6 +81,8 @@ function rowToHeatDetailSheetRow(row) {
   return {
     排名: row.rank ?? '',
     ...base,
+    漲跌: row.price_change ?? '',
+    '漲跌幅(%)': row.change_pct ?? '',
     成交量: lots != null ? lots : base.成交量,
     成交金額: row.turnover ?? '',
   }
