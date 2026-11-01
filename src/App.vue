@@ -26,7 +26,16 @@ import { buildMasterSearchParams } from './utils/masterSearchParams.js'
 import { filterMasterRowsByQuery, isCodeLikeMasterQuery, buildStockCodeLookupFilters } from './utils/masterSearchMatch.js'
 import { filterMasterRowsClient, TA_FULL_MARKET_SCAN_CAP, TA_SCOPED_SCAN_CAP, TA_BACKEND_CLIENT_CAP } from './utils/taScreenFilter.js'
 import { isUnexpiredWarrant, computeChangeFromBars } from './utils/warrantDisplay.js'
-import { hasActiveTaFilters, hasBackendTaFilters, hasClientOnlyTaFilters, pickClientOnlyTaFilters } from './lib/taScreenRules.js'
+import {
+  hasActiveTaFilters,
+  hasBackendTaFilters,
+  hasClientOnlyTaFilters,
+  pickClientOnlyTaFilters,
+  emptyTaFilters,
+  TA_FILTER_GROUPS,
+  taScreenQueryFlags,
+  activeTaFilterLabels,
+} from './lib/taScreenRules.js'
 import { getCarouselLimitForUser, getWatchlistLimitsForUser } from './utils/planAccess.js'
 import { readWarrantWatchlist, toggleWarrantWatchlist } from './utils/warrantWatchlist.js'
 
@@ -189,11 +198,8 @@ function sortDirLabel() {
 
 let masterLoadRequestId = 0
 
-const taFilters = reactive({
-  heikinFirstRed: false,
-  ma5gtMa10: false,
-  duoKongCrossUp: false,
-})
+const taFilters = reactive(emptyTaFilters())
+const taFilterGroups = TA_FILTER_GROUPS
 
 const masterRows = ref([])
 const masterTotal = ref(0)
@@ -390,10 +396,7 @@ const masterSearchSummary = computed(() => {
     const hi = ratioMax ?? '—'
     parts.push(`行使比例 ${lo}–${hi}`)
   }
-  const ta = []
-  if (taFilters.heikinFirstRed) ta.push('神奇K線第一根紅')
-  if (taFilters.ma5gtMa10) ta.push('5均>10均')
-  if (taFilters.duoKongCrossUp) ta.push('剛站上多空線')
+  const ta = activeTaFilterLabels(taFilters)
   if (ta.length) parts.push(ta.join('＋'))
   if (ta.length) parts.unshift('日線')
   return parts.length ? parts.join(' · ') : '全部未到期權證'
@@ -495,8 +498,7 @@ async function loadMaster() {
             sort: sortKey,
             sortDir: filters.sortDir || 'desc',
           }),
-          ma5gtMa10: taFilters.ma5gtMa10 ? 1 : undefined,
-          heikinFirstRed: taFilters.heikinFirstRed ? 1 : undefined,
+          ...taScreenQueryFlags(taFilters),
         })
         rows = applyMasterSort(
           filterMasterRowsByQuery(keepUnexpiredRows(data.data || []), filters.q),
@@ -1001,9 +1003,7 @@ function toggleTaFilter(key) {
 }
 
 function clearTaFilters() {
-  taFilters.heikinFirstRed = false
-  taFilters.ma5gtMa10 = false
-  taFilters.duoKongCrossUp = false
+  for (const key of Object.keys(taFilters)) taFilters[key] = false
   filters.page = 1
   if (showMasterResults.value) loadMaster()
 }
@@ -1425,27 +1425,23 @@ onUnmounted(() => {
           <h3>技術面</h3>
           <span class="ta-period-badge">日線</span>
         </div>
-        <p class="ta-hint muted">未填標的時掃成交量前 600 檔。剛站上多空線：Hull 週期 45；神奇K／5均&gt;10均由後端篩選。</p>
-        <div class="ta-chip-row ranking-period-toggle">
-          <button
-            type="button"
-            class="chip-btn"
-            :class="{ active: taFilters.duoKongCrossUp }"
-            title="最新收盤站上多空線（週期 45），且前一日收在線下或貼線"
-            @click="toggleTaFilter('duoKongCrossUp')"
-          >剛站上多空線</button>
-          <button
-            type="button"
-            class="chip-btn"
-            :class="{ active: taFilters.heikinFirstRed }"
-            @click="toggleTaFilter('heikinFirstRed')"
-          >神奇K線第一根紅</button>
-          <button
-            type="button"
-            class="chip-btn"
-            :class="{ active: taFilters.ma5gtMa10 }"
-            @click="toggleTaFilter('ma5gtMa10')"
-          >5均 &gt; 10均</button>
+        <p class="ta-hint muted">未填標的時掃成交量前 600 檔。可複選條件（同時符合）。多空線週期 45；KD 低檔金叉為 K 上穿 D 且 K&lt;30。</p>
+        <div
+          v-for="group in taFilterGroups"
+          :key="group.id"
+          class="ta-group"
+        >
+          <span class="ta-group-label">{{ group.label }}</span>
+          <div class="ta-chip-row ranking-period-toggle">
+            <button
+              v-for="item in group.items"
+              :key="item.key"
+              type="button"
+              class="chip-btn"
+              :class="{ active: taFilters[item.key] }"
+              @click="toggleTaFilter(item.key)"
+            >{{ item.label }}</button>
+          </div>
         </div>
       </div>
 
@@ -2385,6 +2381,21 @@ a.btn-auth {
   flex: 1 1 100%;
   margin: -0.15rem 0 0.1rem;
   font-size: 0.76rem;
+}
+.ta-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem 0.7rem;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.ta-group-label {
+  flex: 0 0 3.4rem;
+  padding-top: 0.28rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #c9b08a;
 }
 .ta-chip-row {
   display: flex;

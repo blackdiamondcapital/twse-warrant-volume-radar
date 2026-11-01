@@ -1,4 +1,4 @@
-import { calcSMA, calcDuoKongLine, mapBars } from './indicators'
+import { calcSMA, calcDuoKongLine, calcKD, calcRSI, calcMACD, mapBars } from './indicators'
 
 /** 選股「剛站上多空線」專用週期（與圖表預設 77 可不同） */
 export const TA_SCREEN_DUO_KONG_PERIOD = 45
@@ -131,6 +131,20 @@ export function isHeikinFirstRed(bars) {
   return isHeikinBarRed(ha[i]) && !isHeikinBarRed(ha[i - 1])
 }
 
+export function isHeikinFirstGreen(bars) {
+  const ha = buildHeikinAshi(bars)
+  const i = ha.length - 1
+  if (i < 1) return false
+  return !isHeikinBarRed(ha[i]) && isHeikinBarRed(ha[i - 1])
+}
+
+export function isHeikinRed(bars) {
+  const ha = buildHeikinAshi(bars)
+  const i = ha.length - 1
+  if (i < 0) return false
+  return isHeikinBarRed(ha[i])
+}
+
 /** 5 均線 > 10 均線（最新 bar） */
 export function isMa5AboveMa10(closes) {
   if (!closes?.length) return false
@@ -159,32 +173,158 @@ export function isDuoKongCrossUp(closes, period = TA_SCREEN_DUO_KONG_PERIOD) {
   return closeNow > dkNow && closePrev <= dkPrev
 }
 
+export function isDuoKongAbove(closes, period = TA_SCREEN_DUO_KONG_PERIOD) {
+  if (!closes?.length) return false
+  const dk = calcDuoKongLine(closes, period)
+  const i = closes.length - 1
+  return closes[i] != null && dk.base[i] != null && closes[i] > dk.base[i]
+}
+
+export function isDuoKongCrossDown(closes, period = TA_SCREEN_DUO_KONG_PERIOD) {
+  if (!closes?.length || closes.length < 2) return false
+  const dk = calcDuoKongLine(closes, period)
+  const i = closes.length - 1
+  const prev = i - 1
+  if (closes[i] == null || closes[prev] == null || dk.base[i] == null || dk.base[prev] == null) return false
+  return closes[i] < dk.base[i] && closes[prev] >= dk.base[prev]
+}
+
+function lastTwo(arr) {
+  if (!arr?.length || arr.length < 2) return [null, null]
+  return [arr[arr.length - 2], arr[arr.length - 1]]
+}
+
 export function evaluateTaSignals(bars) {
   const mapped = mapBars(bars).filter((b) => b.close != null)
   const ohlcBars = mapped.filter(
     (b) => b.open != null && b.high != null && b.low != null && b.close != null,
   )
   const closes = mapped.map((b) => b.close)
+  const volumes = mapped.map((b) => b.volume)
   const gwParams = resolveGoldenWaveParams(closes.length)
+  const i = closes.length - 1
+  const ma5 = calcSMA(closes, 5)
+  const ma10 = calcSMA(closes, 10)
+  const ma20 = calcSMA(closes, 20)
+  const [ma5Prev, ma5Now] = lastTwo(ma5)
+  const [ma10Prev, ma10Now] = lastTwo(ma10)
+  const rsi = calcRSI(closes, 14)
+  const macd = calcMACD(closes, 12, 26, 9)
+  const kd = calcKD(ohlcBars, 9, 3, 3)
+  const rsiNow = rsi[i]
+  const [difPrev, difNow] = lastTwo(macd.dif)
+  const [deaPrev, deaNow] = lastTwo(macd.dea)
+  const [kPrev, kNow] = lastTwo(kd.k)
+  const [dPrev, dNow] = lastTwo(kd.d)
+  const prevBar = ohlcBars[ohlcBars.length - 2]
+  const lastBar = ohlcBars[ohlcBars.length - 1]
+  const volNow = Number(volumes[i])
+  const volPrev = Number(volumes[i - 1])
+
   return {
     reversalFirstRed: isGoldenWaveFirstRed(closes, gwParams),
     heikinFirstRed: isHeikinFirstRed(ohlcBars),
+    heikinFirstGreen: isHeikinFirstGreen(ohlcBars),
+    heikinRed: isHeikinRed(ohlcBars),
     ma5gtMa10: isMa5AboveMa10(closes),
+    ma10gtMa20: ma10Now != null && ma20[i] != null && ma10Now > ma20[i],
+    maBullAlign: ma5Now != null && ma10Now != null && ma20[i] != null && ma5Now > ma10Now && ma10Now > ma20[i],
+    maBearAlign: ma5Now != null && ma10Now != null && ma20[i] != null && ma5Now < ma10Now && ma10Now < ma20[i],
+    ma5CrossUpMa10: ma5Prev != null && ma10Prev != null && ma5Now != null && ma10Now != null
+      && ma5Prev <= ma10Prev && ma5Now > ma10Now,
+    ma5CrossDownMa10: ma5Prev != null && ma10Prev != null && ma5Now != null && ma10Now != null
+      && ma5Prev >= ma10Prev && ma5Now < ma10Now,
+    closeAboveMa5: closes[i] != null && ma5Now != null && closes[i] > ma5Now,
     duoKongCrossUp: isDuoKongCrossUp(closes),
+    duoKongAbove: isDuoKongAbove(closes),
+    duoKongCrossDown: isDuoKongCrossDown(closes),
+    rsiLt30: rsiNow != null && rsiNow < 30,
+    rsiGt70: rsiNow != null && rsiNow > 70,
+    macdDifGt0: difNow != null && difNow > 0,
+    macdGoldCross: difPrev != null && deaPrev != null && difNow != null && deaNow != null
+      && difPrev <= deaPrev && difNow > deaNow,
+    kdKgtD: kNow != null && dNow != null && kNow > dNow,
+    kdGoldCrossLow: kPrev != null && dPrev != null && kNow != null && dNow != null
+      && kPrev <= dPrev && kNow > dNow && kNow < 30,
+    breakPrevHigh: lastBar && prevBar && lastBar.close != null && prevBar.high != null
+      && lastBar.close > prevBar.high,
+    volumeUp: Number.isFinite(volNow) && Number.isFinite(volPrev) && volPrev > 0 && volNow >= volPrev * 1.5,
   }
+}
+
+export const TA_FILTER_GROUPS = [
+  {
+    id: 'ma',
+    label: '均線',
+    items: [
+      { key: 'ma5gtMa10', label: '5均 > 10均' },
+      { key: 'ma10gtMa20', label: '10均 > 20均' },
+      { key: 'maBullAlign', label: '多頭排列' },
+      { key: 'maBearAlign', label: '空頭排列' },
+      { key: 'ma5CrossUpMa10', label: '5/10 金叉' },
+      { key: 'ma5CrossDownMa10', label: '5/10 死叉' },
+      { key: 'closeAboveMa5', label: '收盤 > 5均' },
+    ],
+  },
+  {
+    id: 'dk',
+    label: '多空線',
+    items: [
+      { key: 'duoKongCrossUp', label: '剛站上多空線' },
+      { key: 'duoKongAbove', label: '站上多空線' },
+      { key: 'duoKongCrossDown', label: '剛跌破多空線' },
+    ],
+  },
+  {
+    id: 'ha',
+    label: '神奇K',
+    items: [
+      { key: 'heikinFirstRed', label: '第一根紅' },
+      { key: 'heikinFirstGreen', label: '第一根綠' },
+      { key: 'heikinRed', label: '紅K' },
+    ],
+  },
+  {
+    id: 'mom',
+    label: '動能',
+    items: [
+      { key: 'reversalFirstRed', label: '小不點第一根紅' },
+      { key: 'rsiLt30', label: 'RSI < 30' },
+      { key: 'rsiGt70', label: 'RSI > 70' },
+      { key: 'macdDifGt0', label: 'MACD DIF > 0' },
+      { key: 'macdGoldCross', label: 'MACD 金叉' },
+      { key: 'kdKgtD', label: 'KD K > D' },
+      { key: 'kdGoldCrossLow', label: 'KD 低檔金叉' },
+    ],
+  },
+  {
+    id: 'pv',
+    label: '量價',
+    items: [
+      { key: 'breakPrevHigh', label: '突破昨高' },
+      { key: 'volumeUp', label: '放量 1.5 倍' },
+    ],
+  },
+]
+
+export const BACKEND_TA_FILTER_KEYS = TA_FILTER_GROUPS.flatMap((g) => g.items.map((i) => i.key))
+export const TA_FILTER_LABELS = Object.fromEntries(
+  TA_FILTER_GROUPS.flatMap((g) => g.items.map((i) => [i.key, i.label])),
+)
+
+export function emptyTaFilters() {
+  return Object.fromEntries(BACKEND_TA_FILTER_KEYS.map((key) => [key, false]))
 }
 
 export function passesTaFilters(signals, taFilters) {
   if (!taFilters) return true
-  if (taFilters.reversalFirstRed && !signals.reversalFirstRed) return false
-  if (taFilters.heikinFirstRed && !signals.heikinFirstRed) return false
-  if (taFilters.ma5gtMa10 && !signals.ma5gtMa10) return false
-  if (taFilters.duoKongCrossUp && !signals.duoKongCrossUp) return false
+  for (const key of BACKEND_TA_FILTER_KEYS) {
+    if (taFilters[key] && !signals[key]) return false
+  }
   return true
 }
 
-export const CLIENT_ONLY_TA_FILTER_KEYS = ['duoKongCrossUp']
-export const BACKEND_TA_FILTER_KEYS = ['ma5gtMa10', 'heikinFirstRed']
+export const CLIENT_ONLY_TA_FILTER_KEYS = []
 
 export function hasBackendTaFilters(taFilters) {
   return BACKEND_TA_FILTER_KEYS.some((key) => taFilters?.[key])
@@ -203,10 +343,17 @@ export function hasClientOnlyTaFilters(taFilters) {
 }
 
 export function hasActiveTaFilters(taFilters) {
-  return !!(
-    taFilters?.reversalFirstRed
-    || taFilters?.heikinFirstRed
-    || taFilters?.ma5gtMa10
-    || taFilters?.duoKongCrossUp
-  )
+  return BACKEND_TA_FILTER_KEYS.some((key) => taFilters?.[key])
+}
+
+export function taScreenQueryFlags(taFilters) {
+  const out = {}
+  for (const key of BACKEND_TA_FILTER_KEYS) {
+    if (taFilters?.[key]) out[key] = 1
+  }
+  return out
+}
+
+export function activeTaFilterLabels(taFilters) {
+  return BACKEND_TA_FILTER_KEYS.filter((key) => taFilters?.[key]).map((key) => TA_FILTER_LABELS[key])
 }
