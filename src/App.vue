@@ -544,8 +544,8 @@ async function loadMaster() {
         })
       }
       if (loadRequestId !== masterLoadRequestId) return
-      taFilteredRows.value = rows
-      masterTotal.value = rows.length
+      taFilteredRows.value = applyMasterSort(rows)
+      masterTotal.value = taFilteredRows.value.length
       clientFilterActive.value = true
       const page = Math.max(1, filters.page)
       paginateClientFilteredRows(page)
@@ -661,24 +661,10 @@ async function mapPool(items, limit, fn) {
   await Promise.all(Array.from({ length: n }, () => worker()))
 }
 
-const PRICE_SORT_KEYS = new Set(['close', 'volume', 'turnover', 'price_change', 'change', 'change_pct'])
-
-function resortMasterRowsAfterEnrich() {
-  if (!PRICE_SORT_KEYS.has(filters.sort)) return
-  if (clientFilterActive.value) {
-    taFilteredRows.value = applyMasterSort(taFilteredRows.value)
-    paginateClientFilteredRows(filters.page)
-    return
-  }
-  masterRows.value = applyMasterSort(masterRows.value)
-}
-
 function scheduleMasterPriceEnrich() {
   const rows = masterRows.value
   if (!rows?.length) return
-  void enrichMasterPriceChange(rows, masterLoadRequestId).then(() => {
-    if (masterLoadRequestId) resortMasterRowsAfterEnrich()
-  })
+  void enrichMasterPriceChange(rows, masterLoadRequestId)
 }
 
 async function enrichMasterPriceChange(rows, loadRequestId) {
