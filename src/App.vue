@@ -174,12 +174,12 @@ function paginateClientFilteredRows(page) {
   scheduleMasterPriceEnrich()
 }
 const loadingMaster = ref(false)
-const masterScreenerOpen = ref(false)
+const masterScreenerOpen = ref(true)
 const showMasterResults = ref(false)
 const exportingMaster = ref(false)
 /** Excel 匯出：false=僅個股，true=含加權／台指等指數類 */
 const masterExportIncludeIndex = ref(false)
-const heatSectionOpen = ref(false)
+const heatSectionOpen = ref(true)
 const exportingHeat = ref(false)
 
 const dates = ref([])
@@ -985,6 +985,9 @@ onMounted(async () => {
 
   await Promise.all([loadStats(), loadDates()])
   await loadRankings()
+  if (masterScreenerOpen.value && !showMasterResults.value) {
+    await loadMaster()
+  }
 })
 
 onUnmounted(() => {
