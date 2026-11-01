@@ -218,6 +218,8 @@ const heatSectionOpen = ref(true)
 /** 當日熱度：日期 chip 預設收合，避免大量交易日換行佔滿版面 */
 const heatDatesOpen = ref(false)
 const exportingHeat = ref(false)
+/** 主站式選單：heat＝當日熱度、screener＝權證總覽（搜尋＋主檔） */
+const engineView = ref('heat')
 
 const dates = ref([])
 const selectedDate = ref('')
@@ -841,9 +843,19 @@ function openTechChartOrLogin() {
   })
 }
 
+function setEngineView(view) {
+  if (view !== 'heat' && view !== 'screener') return
+  engineView.value = view
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+  if (view === 'screener' && !showMasterResults.value && masterScreenerOpen.value) {
+    loadMaster()
+  }
+}
+
 async function onSearch() {
   filters.page = 1
   masterScreenerOpen.value = true
+  engineView.value = 'screener'
   showMasterResults.value = true
   await nextTick()
   window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -1027,7 +1039,7 @@ onMounted(async () => {
 
   await Promise.all([loadStats(), loadDates()])
   await loadRankings()
-  if (masterScreenerOpen.value && !showMasterResults.value) {
+  if (engineView.value === 'screener' && masterScreenerOpen.value && !showMasterResults.value) {
     await loadMaster()
   }
 })
@@ -1038,7 +1050,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app" :class="{ 'app--results': showMasterResults }">
+  <div class="app" :class="{ 'app--results': engineView === 'screener' && showMasterResults }">
     <PwaInstallPrompt />
     <div class="topbar">
       <a class="home-link" href="https://www.quantgems.com/" target="_blank" rel="noopener noreferrer">
@@ -1078,9 +1090,32 @@ onUnmounted(() => {
         </template>
       </div>
     </div>
-    <p v-if="authStatus && !showMasterResults" class="auth-status muted">{{ authStatus }}</p>
+    <p v-if="authStatus && !(engineView === 'screener' && showMasterResults)" class="auth-status muted">{{ authStatus }}</p>
 
-    <template v-if="!showMasterResults">
+    <nav class="engine-nav" aria-label="權證引擎選單">
+      <div class="engine-nav-inner">
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ active: engineView === 'heat' }"
+          @click="setEngineView('heat')"
+        >
+          <i class="fas fa-fire-alt" aria-hidden="true"></i>
+          當日熱度
+        </button>
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ active: engineView === 'screener' }"
+          @click="setEngineView('screener')"
+        >
+          <i class="fas fa-filter" aria-hidden="true"></i>
+          權證總覽
+        </button>
+      </div>
+    </nav>
+
+    <template v-if="engineView === 'heat' || !showMasterResults">
     <header class="hero">
       <div class="page-title">
         <i class="fas fa-satellite-dish" aria-hidden="true"></i>
@@ -1100,8 +1135,9 @@ onUnmounted(() => {
         <span class="stat"><span class="label">最新成交日</span><strong>{{ latestTradeDate }}</strong></span>
       </p>
     </header>
+    </template>
 
-    <section class="heat-section">
+    <section v-if="engineView === 'heat'" class="heat-section">
       <div class="heat-head-row panel">
         <button
           type="button"
@@ -1201,6 +1237,7 @@ onUnmounted(() => {
       </div>
     </section>
 
+    <template v-if="engineView === 'screener' && !showMasterResults">
     <section class="search-bar panel">
       <div class="search-main">
         <div class="step-head">
@@ -1313,7 +1350,7 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <p v-if="statusText && !showMasterResults" class="status muted">{{ statusText }}</p>
+    <p v-if="statusText" class="status muted">{{ statusText }}</p>
 
     <div class="workspace">
       <MasterScreener
@@ -1337,10 +1374,9 @@ onUnmounted(() => {
         @update:export-include-index="masterExportIncludeIndex = $event"
       />
     </div>
-
     </template>
 
-    <template v-else>
+    <template v-else-if="engineView === 'screener'">
       <section class="results-page">
         <div class="results-toolbar panel">
           <div class="results-toolbar-row results-toolbar-row--main">
@@ -1520,6 +1556,78 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 .home-link:hover { color: #e8c98a; }
+
+.engine-nav {
+  margin: -0.35rem -1rem 1rem;
+  padding: 0 1rem;
+  position: sticky;
+  top: 52px;
+  z-index: 45;
+  background: linear-gradient(180deg, rgba(8, 12, 24, 0.94) 0%, rgba(6, 12, 22, 0.88) 100%);
+  border-bottom: 1px solid rgba(212, 175, 110, 0.14);
+  backdrop-filter: blur(14px);
+}
+.engine-nav-inner {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.engine-nav-inner::-webkit-scrollbar {
+  display: none;
+}
+.engine-nav .nav-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(232, 201, 138, 0.68);
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: none;
+  white-space: nowrap;
+}
+.engine-nav .nav-item i {
+  font-size: 0.9rem;
+  color: inherit;
+}
+.engine-nav .nav-item::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(135deg, #e8c98a, #b08a4a);
+  transform: translateX(-50%);
+  transition: width 0.2s ease;
+}
+.engine-nav .nav-item:hover {
+  color: #f7edd4;
+  background: rgba(212, 175, 110, 0.08);
+  border-color: transparent;
+}
+.engine-nav .nav-item.active {
+  color: #f4e6c4;
+  background: transparent;
+  border-color: transparent;
+}
+.engine-nav .nav-item.active::after {
+  width: calc(100% - 1.4rem);
+}
+.engine-nav .nav-item.active i {
+  color: #e8c98a;
+}
 .auth-box {
   display: flex;
   align-items: center;
@@ -2380,6 +2488,14 @@ a.btn-auth {
   .btn-auth {
     padding: 0.38rem 0.62rem;
     font-size: 0.78rem;
+  }
+  .engine-nav {
+    top: 48px;
+    margin-bottom: 0.75rem;
+  }
+  .engine-nav .nav-item {
+    padding: 0.48rem 0.75rem;
+    font-size: 0.82rem;
   }
   .page-title h1 {
     letter-spacing: 0.06em;
