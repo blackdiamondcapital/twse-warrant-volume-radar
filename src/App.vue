@@ -252,7 +252,7 @@ const heatDatesOpen = ref(false)
 const exportingHeat = ref(false)
 /** 站內選單：heat／search／screener／watchlist／ranking 皆為權證引擎功能 */
 const engineView = ref(viewFromPathname(typeof window !== 'undefined' ? window.location.pathname : '/'))
-const ENGINE_VIEWS = ['heat', 'search', 'screener', 'watchlist', 'ranking']
+const ENGINE_VIEWS = ['heat', 'search', 'screener', 'ranking', 'watchlist']
 const PAGE_H1 = {
   heat: '台股權證篩選與當日成交熱度',
   search: '台股權證搜尋：基本面與技術面篩選',
@@ -1233,20 +1233,20 @@ onUnmounted(() => {
         <button
           type="button"
           class="nav-item"
-          :class="{ active: engineView === 'watchlist' }"
-          @click="setEngineView('watchlist')"
-        >
-          <i class="fas fa-star" aria-hidden="true"></i>
-          自選股
-        </button>
-        <button
-          type="button"
-          class="nav-item"
           :class="{ active: engineView === 'ranking' }"
           @click="setEngineView('ranking')"
         >
           <i class="fas fa-trophy" aria-hidden="true"></i>
           報酬排行
+        </button>
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ active: engineView === 'watchlist' }"
+          @click="setEngineView('watchlist')"
+        >
+          <i class="fas fa-star" aria-hidden="true"></i>
+          自選股
         </button>
       </div>
     </nav>
