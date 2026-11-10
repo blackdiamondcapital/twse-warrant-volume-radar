@@ -14,7 +14,17 @@ concurrency:
 jobs:
   import-latest:
     runs-on: ubuntu-latest
+    env:
+      MONITOR_API_URL: ${{ secrets.MONITOR_API_URL }}
+      ETL_REPORT_SECRET: ${{ secrets.ETL_REPORT_SECRET }}
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Report import started
+        env:
+          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
+        run: node scripts/report-import-heartbeat.mjs started
+
       - name: Call TWSEDataCenter import endpoint
         run: |
           set -e
@@ -77,3 +87,9 @@ jobs:
             exit 1
           fi
           echo "- **Database verified**: $DB_TRADE_DATE" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report import result
+        if: ${{ always() }}
+        env:
+          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
+        run: node scripts/report-import-heartbeat.mjs "${{ job.status }}"

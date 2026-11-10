@@ -44,6 +44,16 @@ npm run dev
 
 後端 `ALLOWED_ORIGINS` 需加入 Vercel 網域。
 
+## 每日匯入監控
+
+`.github/workflows/import-latest-warrants.yml` 於台北時間平日 15:00 執行主要匯入，18:00 補跑。請在 GitHub Repository Actions secrets 設定：
+
+- `BACKEND_IMPORT_TOKEN` — 權證匯入 API token
+- `MONITOR_API_URL` — 監控服務 origin（不含 `/api/heartbeat`）
+- `ETL_REPORT_SECRET` — heartbeat 驗證密鑰，須與監控服務一致
+
+Workflow 會回報 `started` 與最終 `success`、`failure` 或 `cancelled`，包含 GitHub run、交易日及可取得的匯入統計。監控端無回應或設定缺漏只會產生 warning，不會影響正式匯入結果。
+
 ## 功能
 
 - 全市場主檔篩選（TWSE `tw_warrant_master` ∪ TPEX `tpex_warrant_master`）
